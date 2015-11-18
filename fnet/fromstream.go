@@ -30,7 +30,7 @@ func (fs *framedStream) SendFrame(b []byte) error {
 	if copy(b2[i:], b) != len(b) {
 		panic("length accounting failed")
 	}
-	_, err := fs.c.Write(b2)
+	_, err := fs.c.Write(b2[:i+len(b)])
 	return err
 }
 
