@@ -24,43 +24,60 @@ func main() {
 		os.Exit(1)
 	}
 	if *listen {
-		ln, err := net.Listen("tcp", *addr)
+		err := listener(frameSize, numStreams, addr)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "net.Listen(%q): %s\n", *addr, err.Error())
-			os.Exit(2)
-		}
-		rrs := fnet.NewStream(*frameSize)
-		for i := 0; i < *numStreams; i++ {
-			c, err := ln.Accept()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "ln.Accept(): %s\n", err.Error())
-				os.Exit(3)
-			}
-			rrs.AddStream(c)
-		}
-		fc := fnet.FrameConn(rrs)
-		defer rrs.Stop()
-		err = clockstation.Run(fc, time.Tick(50*time.Millisecond))
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "clockstation.Run: %s\n", err.Error())
-			os.Exit(2)
+			os.Exit(2) // TODO: More appropriate per-case error number
 		}
 	} else {
-		rrs := fnet.NewStream(*frameSize)
-		for i := 0; i < *numStreams; i++ {
-			c, err := net.Dial("tcp", *addr)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "net.Dial(%q): %s\n", *addr, err.Error())
-				os.Exit(2)
-			}
-			rrs.AddStream(c)
-		}
-		fc := fnet.FrameConn(rrs)
-		defer rrs.Stop()
-		err := clockprinter.Run(fc)
+		err := dialer(frameSize, numStreams, addr)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "clockprinter.Run: %s\n", err.Error())
 			os.Exit(2)
 		}
 	}
+}
+
+func listener(frameSize *int, numStreams *int, addr *string) error {
+	ln, err := net.Listen("tcp", *addr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "net.Listen(%q): %s\n", *addr, err.Error())
+		return err
+	}
+	rrs := fnet.NewStream(*frameSize)
+
+	defer rrs.Stop()
+	for i := 0; i < *numStreams; i++ {
+		c, err := ln.Accept()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ln.Accept(): %s\n", err.Error())
+			return err
+		}
+		rrs.AddStream(c)
+	}
+	fc := fnet.FrameConn(rrs)
+	err = clockstation.Run(fc, time.Tick(50*time.Millisecond))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "clockstation.Run: %s\n", err.Error())
+		return err
+	}
+	return nil
+}
+
+func dialer(frameSize *int, numStreams *int, addr *string) error {
+	rrs := fnet.NewStream(*frameSize)
+	defer rrs.Stop()
+	for i := 0; i < *numStreams; i++ {
+		c, err := net.Dial("tcp", *addr)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "net.Dial(%q): %s\n", *addr, err.Error())
+			return err
+		}
+		rrs.AddStream(c)
+	}
+	fc := fnet.FrameConn(rrs)
+	err := clockprinter.Run(fc)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "clockprinter.Run: %s\n", err.Error())
+		return err
+	}
+	return nil
 }

@@ -15,7 +15,7 @@ type rrStream struct {
 	nextStream int         // The index of the next stream to send a packet on
 	rec        chan []byte // Queue of received packets
 	wg         sync.WaitGroup
-	stop       bool
+	stopCh     chan struct{}
 }
 
 func (rrs *rrStream) AddStream(conn net.Conn) {
@@ -34,7 +34,7 @@ func NewStream(frameSize int) *rrStream {
 	var streamPool []*framedStream
 	var wg sync.WaitGroup
 	var lock sync.Mutex
-	rrs := &rrStream{streamPool, lock, frameSize, 0, 0, make(chan []byte, recBufSize), wg, false}
+	rrs := &rrStream{streamPool, lock, frameSize, 0, 0, make(chan []byte, recBufSize), wg, make(chan struct{})}
 	return rrs
 }
 
@@ -44,7 +44,7 @@ func (rrs *rrStream) FrameSize() int {
 }
 
 func (rrs *rrStream) Stop() {
-	rrs.stop = true
+	close(rrs.stopCh)
 	for _, stream := range rrs.pool {
 		stream.c.Close()
 	}
@@ -58,9 +58,10 @@ func (rrs *rrStream) Listen(fs *framedStream, index int) {
 		buf := make([]byte, rrs.frameSize)
 		sz, err := fs.RecvFrame(buf)
 		if err != nil {
-			if rrs.stop { // Stop this thread
+			select {
+			case <-rrs.stopCh: // Stop this thread
 				return
-			} else {
+			default:
 				// Remove the stream if the connection is sad
 				rrs.RemoveStream(fs, index)
 				return
