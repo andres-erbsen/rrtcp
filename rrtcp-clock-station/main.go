@@ -15,7 +15,7 @@ import (
 var addr = flag.String("address", "", "address to connect to or listen at")
 var listen = flag.Bool("l", false, "bind to the specified address and listen (default: connect)")
 var frameSize = flag.Int("s", 1024, "frame size")
-var numStreams = flag.Int("n", 2, "number of streams")
+var numStreams = flag.Int("n", 5, "number of streams")
 
 func main() {
 	flag.Parse()
@@ -39,6 +39,7 @@ func main() {
 			rrs.AddStream(c)
 		}
 		fc := fnet.FrameConn(rrs)
+		defer rrs.Stop()
 		err = clockstation.Run(fc, time.Tick(50*time.Millisecond))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "clockstation.Run: %s\n", err.Error())
@@ -55,6 +56,7 @@ func main() {
 			rrs.AddStream(c)
 		}
 		fc := fnet.FrameConn(rrs)
+		defer rrs.Stop()
 		err := clockprinter.Run(fc)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "clockprinter.Run: %s\n", err.Error())
