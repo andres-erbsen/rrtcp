@@ -18,9 +18,6 @@ type rrStream struct {
 	stop       bool
 }
 
-//TODO: Dynamic pool size, create new rrStream from connections, stop gracefully
-//TODO: No modifying pool at the same time
-
 func (rrs *rrStream) AddStream(conn net.Conn) {
 	stream := &framedStream{conn, rrs.frameSize}
 
@@ -33,7 +30,7 @@ func (rrs *rrStream) AddStream(conn net.Conn) {
 	go rrs.Listen(stream, rrs.numStreams-1)
 }
 
-func NewStream(frameSize int) FrameConn {
+func NewStream(frameSize int) *rrStream {
 	var streamPool []*framedStream
 	var wg sync.WaitGroup
 	var lock sync.Mutex
@@ -48,8 +45,8 @@ func (rrs *rrStream) FrameSize() int {
 
 func (rrs *rrStream) Stop() {
 	rrs.stop = true
-	for i := 0; i < rrs.numStreams; i++ {
-		rrs.pool[i].c.Close()
+	for _, stream := range rrs.pool {
+		stream.c.Close()
 	}
 	rrs.wg.Wait()
 }
