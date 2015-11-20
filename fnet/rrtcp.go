@@ -2,33 +2,42 @@ package fnet
 
 import (
 	"net"
+	"sync"
 )
 
-const numConn = 20
-const recBufSize = 1 * numConn // Received packet buffer is a linear function of the number of connections
+const recBufSize = 20 // This is a total guess as to a reasonable buffer size for our receive channel
 
 type rrStream struct {
-	pool       [numConn]*framedStream
+	pool       []*framedStream
+	poolLock   sync.Mutex // Lock for changing the pool and pool related values (numStreams)
 	frameSize  int
+	numStreams int
 	nextStream int         // The index of the next stream to send a packet on
 	rec        chan []byte // Queue of received packets
+	wg         sync.WaitGroup
+	stop       bool
 }
 
-// Makes a round robin Stream given a pool of TCP connections and a frameSize
-// PRE: connPool :-> [numConn]net.Conn
-// RET: ret :-> FrameConn{FrameSize = frameSize}
-func FromConnPool(connPool [numConn]net.Conn, frameSize int) FrameConn {
-	var streamPool [numConn]*framedStream
-	for i := 0; i < numConn; i++ {
-		streamPool[i] = &framedStream{connPool[i], frameSize}
-	}
-	rrs := &rrStream{streamPool, frameSize, 0, make(chan []byte, recBufSize)}
+//TODO: Dynamic pool size, create new rrStream from connections, stop gracefully
+//TODO: No modifying pool at the same time
+
+func (rrs *rrStream) AddStream(conn net.Conn) {
+	stream := &framedStream{conn, rrs.frameSize}
+
+	rrs.poolLock.Lock()
+	rrs.numStreams++
+	rrs.pool = append(rrs.pool, stream)
+	rrs.poolLock.Unlock()
 	// Start a new thread for listening to every connection
-	for i := 0; i < numConn; i++ {
-		// TODO: Do something with possible errors
-		// TODO: WaitGroups so we can stop the stream
-		go rrs.Listen(streamPool[i])
-	}
+	rrs.wg.Add(1)
+	go rrs.Listen(stream, rrs.numStreams-1)
+}
+
+func NewStream(frameSize int) FrameConn {
+	var streamPool []*framedStream
+	var wg sync.WaitGroup
+	var lock sync.Mutex
+	rrs := &rrStream{streamPool, lock, frameSize, 0, 0, make(chan []byte, recBufSize), wg, false}
 	return rrs
 }
 
@@ -37,17 +46,39 @@ func (rrs *rrStream) FrameSize() int {
 	return rrs.frameSize
 }
 
+func (rrs *rrStream) Stop() {
+	rrs.stop = true
+	for i := 0; i < rrs.numStreams; i++ {
+		rrs.pool[i].c.Close()
+	}
+	rrs.wg.Wait()
+}
+
 // Listen for incoming packets and add them to the received queue
-func (rrs *rrStream) Listen(fs *framedStream) error {
-	// TODO: Safe stop
+func (rrs *rrStream) Listen(fs *framedStream, index int) {
+	defer rrs.wg.Done()
 	for {
 		buf := make([]byte, rrs.frameSize)
 		sz, err := fs.RecvFrame(buf)
 		if err != nil {
-			return err
+			if rrs.stop { // Stop this thread
+				return
+			} else {
+				// Remove the stream if the connection is sad
+				rrs.RemoveStream(fs, index)
+				return
+			}
 		}
 		rrs.rec <- buf[:sz]
 	}
+}
+
+func (rrs *rrStream) RemoveStream(fs *framedStream, index int) {
+	fs.c.Close()
+	rrs.poolLock.Lock()
+	rrs.numStreams--
+	rrs.pool = append(rrs.pool[:index], rrs.pool[index+1:]...)
+	rrs.poolLock.Unlock()
 }
 
 // SendFrame implements FrameConn.SendFrame
@@ -55,10 +86,13 @@ func (rrs *rrStream) SendFrame(b []byte) error {
 	fs := rrs.pool[rrs.nextStream]
 	err := fs.SendFrame(b)
 	// TODO: Should we actually move up to the next stream if there's an error?
-	rrs.nextStream = (rrs.nextStream + 1) % numConn // Get the next round-robin index
+	rrs.nextStream = (rrs.nextStream + 1) % rrs.numStreams // Get the next round-robin index
 	return err
 }
 
+// RecvFrame implements FrameConn.RecvFrame
+// It pulls the next frame out of the rec channel
+// This method should be running continously to prevent blocking on the rec chan
 func (rrs *rrStream) RecvFrame(b []byte) (int, error) {
 	frame := <-rrs.rec
 	copy(b[:len(frame)], frame)
