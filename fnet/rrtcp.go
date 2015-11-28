@@ -1,13 +1,14 @@
 package fnet
 
 import (
+	"errors"
 	"net"
 	"sync"
 )
 
 const recBufSize = 20 // This is a total guess as to a reasonable buffer size for our receive channel
 
-type rrStream struct {
+type RrStream struct {
 	pool       []*framedStream
 	poolLock   sync.Mutex // Lock for changing the pool and pool related values (numStreams)
 	frameSize  int
@@ -18,7 +19,7 @@ type rrStream struct {
 	stopCh     chan struct{}
 }
 
-func (rrs *rrStream) AddStream(conn net.Conn) {
+func (rrs *RrStream) AddStream(conn net.Conn) {
 	stream := &framedStream{conn, rrs.frameSize}
 
 	rrs.poolLock.Lock()
@@ -27,23 +28,23 @@ func (rrs *rrStream) AddStream(conn net.Conn) {
 	rrs.poolLock.Unlock()
 	// Start a new thread for listening to every connection
 	rrs.wg.Add(1)
-	go rrs.Listen(stream, rrs.numStreams-1)
+	go rrs.listen(stream)
 }
 
-func NewStream(frameSize int) *rrStream {
+func NewStream(frameSize int) *RrStream {
 	var streamPool []*framedStream
 	var wg sync.WaitGroup
 	var lock sync.Mutex
-	rrs := &rrStream{streamPool, lock, frameSize, 0, 0, make(chan []byte, recBufSize), wg, make(chan struct{})}
+	rrs := &RrStream{streamPool, lock, frameSize, 0, 0, make(chan []byte, recBufSize), wg, make(chan struct{})}
 	return rrs
 }
 
 // FrameSize implements FrameConn.FrameSize
-func (rrs *rrStream) FrameSize() int {
+func (rrs *RrStream) FrameSize() int {
 	return rrs.frameSize
 }
 
-func (rrs *rrStream) Stop() {
+func (rrs *RrStream) Stop() {
 	close(rrs.stopCh)
 	for _, stream := range rrs.pool {
 		stream.c.Close()
@@ -51,8 +52,8 @@ func (rrs *rrStream) Stop() {
 	rrs.wg.Wait()
 }
 
-// Listen for incoming packets and add them to the received queue
-func (rrs *rrStream) Listen(fs *framedStream, index int) {
+// listen for incoming packets and add them to the received queue
+func (rrs *RrStream) listen(fs *framedStream) {
 	defer rrs.wg.Done()
 	for {
 		buf := make([]byte, rrs.frameSize)
@@ -63,7 +64,7 @@ func (rrs *rrStream) Listen(fs *framedStream, index int) {
 				return
 			default:
 				// Remove the stream if the connection is sad
-				rrs.RemoveStream(fs, index)
+				rrs.RemoveStream(fs)
 				return
 			}
 		}
@@ -71,27 +72,47 @@ func (rrs *rrStream) Listen(fs *framedStream, index int) {
 	}
 }
 
-func (rrs *rrStream) RemoveStream(fs *framedStream, index int) {
+// TODO: Implement this more efficiently
+func (rrs *RrStream) RemoveStream(fs *framedStream) {
 	fs.c.Close()
 	rrs.poolLock.Lock()
+
+	// Get index of stream
+	// TODO: Exception if doesn't exist at all
+	var fsIndex int
+	for index, stream := range rrs.pool {
+		if stream == fs {
+			fsIndex = index
+			break
+		}
+	}
+
 	rrs.numStreams--
-	rrs.pool = append(rrs.pool[:index], rrs.pool[index+1:]...)
+	if rrs.nextStream >= rrs.numStreams {
+		rrs.nextStream = 0
+	}
+	rrs.pool = append(rrs.pool[:fsIndex], rrs.pool[fsIndex+1:]...)
 	rrs.poolLock.Unlock()
 }
 
-// SendFrame implements FrameConn.SendFrame
-func (rrs *rrStream) SendFrame(b []byte) error {
+// SendFrae implements FrameConn.SendFrame
+func (rrs *RrStream) SendFrame(b []byte) error {
+	rrs.poolLock.Lock()
+	if rrs.numStreams == 0 {
+		return errors.New("No streams to send packets on.")
+	}
 	fs := rrs.pool[rrs.nextStream]
 	err := fs.SendFrame(b)
 	// TODO: Should we actually move up to the next stream if there's an error?
 	rrs.nextStream = (rrs.nextStream + 1) % rrs.numStreams // Get the next round-robin index
+	rrs.poolLock.Unlock()
 	return err
 }
 
 // RecvFrame implements FrameConn.RecvFrame
 // It pulls the next frame out of the rec channel
 // This method should be running continously to prevent blocking on the rec chan
-func (rrs *rrStream) RecvFrame(b []byte) (int, error) {
+func (rrs *RrStream) RecvFrame(b []byte) (int, error) {
 	frame := <-rrs.rec
 	copy(b[:len(frame)], frame)
 

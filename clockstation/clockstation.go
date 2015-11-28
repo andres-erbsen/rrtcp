@@ -7,7 +7,7 @@ import (
 	"github.com/andres-erbsen/rrtcp/fnet"
 )
 
-type clockStation struct {
+type ClockStation struct {
 	fc      fnet.FrameConn
 	tick    <-chan time.Time
 	stopCh  chan struct{}
@@ -17,12 +17,13 @@ type clockStation struct {
 // Start starts a new clock station. The connection argument is wrapped.
 // PRE: fc :-> fnet.FrameConn
 // EFF: sends each value from ticker over fc (nanoseconds in little-endian 64-bit signed unix epoch format) until stop is called
-func Run(fc fnet.FrameConn, tick <-chan time.Time) error {
-	cs := clockStation{fc, tick, make(chan struct{}), make(chan struct{})}
-	return cs.run()
+
+func NewStation(fc fnet.FrameConn, tick <-chan time.Time) *ClockStation {
+	cs := &ClockStation{fc, tick, make(chan struct{}), make(chan struct{})}
+	return cs
 }
 
-func (cs *clockStation) run() error {
+func (cs *ClockStation) Run() error {
 	defer close(cs.stopped)
 	var b [8]byte
 	for {
@@ -39,7 +40,7 @@ func (cs *clockStation) run() error {
 	}
 }
 
-func (cs *clockStation) Stop() {
+func (cs *ClockStation) Stop() {
 	close(cs.stopCh)
 	<-cs.stopped
 }

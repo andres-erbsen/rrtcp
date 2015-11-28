@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/andres-erbsen/rrtcp/clockprinter"
@@ -37,14 +39,32 @@ func main() {
 }
 
 func listener(frameSize *int, numStreams *int, addr *string) error {
+	var cs *clockstation.ClockStation
+	var rrs *fnet.RrStream
+
+	// Handle stop signals
+	// TODO: Is there a better place to put this?
+	// TODO: Assumes cs, rrs have been defined
+	// TODO: Is it better to os.Exit() or return?
+	stop := make(chan os.Signal, 2)
+	done := make(chan bool, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-stop
+		cs.Stop()
+		rrs.Stop()
+		done <- true
+		fmt.Println("Stopped listener.")
+		os.Exit(1)
+	}()
+
 	ln, err := net.Listen("tcp", *addr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "net.Listen(%q): %s\n", *addr, err.Error())
 		return err
 	}
-	rrs := fnet.NewStream(*frameSize)
+	rrs = fnet.NewStream(*frameSize)
 
-	defer rrs.Stop()
 	for i := 0; i < *numStreams; i++ {
 		c, err := ln.Accept()
 		if err != nil {
@@ -54,17 +74,34 @@ func listener(frameSize *int, numStreams *int, addr *string) error {
 		rrs.AddStream(c)
 	}
 	fc := fnet.FrameConn(rrs)
-	err = clockstation.Run(fc, time.Tick(50*time.Millisecond))
+
+	cs = clockstation.NewStation(fc, time.Tick(50*time.Millisecond))
+	err = cs.Run()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "clockstation.Run: %s\n", err.Error())
 		return err
 	}
+	// Wait for listener to be stopped before returning
+	<-done
 	return nil
 }
 
 func dialer(frameSize *int, numStreams *int, addr *string) error {
-	rrs := fnet.NewStream(*frameSize)
-	defer rrs.Stop()
+	var rrs *fnet.RrStream
+
+	// Handle stop signals
+	// TODO: Is there a better place to put this?
+	// TODO: Assumes rrs has been defined
+	stop := make(chan os.Signal, 2)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-stop
+		rrs.Stop()
+		fmt.Println("Stopped dialer.")
+		os.Exit(1)
+	}()
+
+	rrs = fnet.NewStream(*frameSize)
 	for i := 0; i < *numStreams; i++ {
 		c, err := net.Dial("tcp", *addr)
 		if err != nil {
@@ -74,6 +111,7 @@ func dialer(frameSize *int, numStreams *int, addr *string) error {
 		rrs.AddStream(c)
 	}
 	fc := fnet.FrameConn(rrs)
+
 	err := clockprinter.Run(fc)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "clockprinter.Run: %s\n", err.Error())
