@@ -40,7 +40,7 @@ func main() {
 
 func listener(frameSize *int, numStreams *int, addr *string) error {
 	var cs *clockstation.ClockStation
-	var rrs *fnet.RrStream
+	var fc fnet.FrameConn
 
 	// Handle stop signals
 	// TODO: Is there a better place to put this?
@@ -52,7 +52,7 @@ func listener(frameSize *int, numStreams *int, addr *string) error {
 	go func() {
 		<-stop
 		cs.Stop()
-		rrs.Stop()
+		fc.Stop()
 		done <- true
 		fmt.Println("Stopped listener.")
 		os.Exit(1)
@@ -63,7 +63,7 @@ func listener(frameSize *int, numStreams *int, addr *string) error {
 		fmt.Fprintf(os.Stderr, "net.Listen(%q): %s\n", *addr, err.Error())
 		return err
 	}
-	rrs = fnet.NewStream(*frameSize)
+	rrs := fnet.NewStream(*frameSize)
 
 	for i := 0; i < *numStreams; i++ {
 		c, err := ln.Accept()
@@ -73,7 +73,7 @@ func listener(frameSize *int, numStreams *int, addr *string) error {
 		}
 		rrs.AddStream(c)
 	}
-	fc := fnet.FrameConn(rrs)
+	fc = fnet.FrameConn(rrs)
 
 	cs = clockstation.NewStation(fc, time.Tick(50*time.Millisecond))
 	err = cs.Run()
@@ -87,7 +87,7 @@ func listener(frameSize *int, numStreams *int, addr *string) error {
 }
 
 func dialer(frameSize *int, numStreams *int, addr *string) error {
-	var rrs *fnet.RrStream
+	var fc fnet.FrameConn
 
 	// Handle stop signals
 	// TODO: Is there a better place to put this?
@@ -96,12 +96,12 @@ func dialer(frameSize *int, numStreams *int, addr *string) error {
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-stop
-		rrs.Stop()
+		fc.Stop()
 		fmt.Println("Stopped dialer.")
 		os.Exit(1)
 	}()
 
-	rrs = fnet.NewStream(*frameSize)
+	rrs := fnet.NewStream(*frameSize)
 	for i := 0; i < *numStreams; i++ {
 		c, err := net.Dial("tcp", *addr)
 		if err != nil {
@@ -110,7 +110,7 @@ func dialer(frameSize *int, numStreams *int, addr *string) error {
 		}
 		rrs.AddStream(c)
 	}
-	fc := fnet.FrameConn(rrs)
+	fc = fnet.FrameConn(rrs)
 
 	err := clockprinter.Run(fc)
 	if err != nil {

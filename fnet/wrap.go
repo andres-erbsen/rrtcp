@@ -24,3 +24,7 @@ func (c netConn) SendFrame(bs []byte) error {
 func (c netConn) RecvFrame(bs []byte) (int, error) {
 	return c.c.Read(bs)
 }
+
+func (c netConn) Stop() {
+	c.c.Close()
+}

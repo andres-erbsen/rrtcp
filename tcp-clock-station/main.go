@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/andres-erbsen/rrtcp/clockprinter"
@@ -23,6 +25,22 @@ func main() {
 		os.Exit(1)
 	}
 	if *listen {
+		var cs *clockstation.ClockStation
+		var fc fnet.FrameConn
+
+		// Handle stop signals
+		stop := make(chan os.Signal, 2)
+		done := make(chan bool, 1)
+		signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+		go func() {
+			<-stop
+			cs.Stop()
+			fc.Stop()
+			done <- true
+			fmt.Println("Stopped listener.")
+			os.Exit(1)
+		}()
+
 		ln, err := net.Listen("tcp", *addr)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "net.Listen(%q): %s\n", *addr, err.Error())
@@ -33,19 +51,34 @@ func main() {
 			fmt.Fprintf(os.Stderr, "ln.Accept(): %s\n", err.Error())
 			os.Exit(3)
 		}
-		fc := fnet.FromOrderedStream(c, *frameSize)
-		err = clockstation.Run(fc, time.Tick(50*time.Millisecond))
+		fc = fnet.FromOrderedStream(c, *frameSize)
+		cs = clockstation.NewStation(fc, time.Tick(50*time.Millisecond))
+		err = cs.Run()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "clockstation.Run: %s\n", err.Error())
 			os.Exit(2)
 		}
+		// Wait for listener to be stopped
+		<-done
 	} else {
+		var fc fnet.FrameConn
+
+		// Handle stop signals
+		stop := make(chan os.Signal, 2)
+		signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+		go func() {
+			<-stop
+			fc.Stop()
+			fmt.Println("Stopped dialer.")
+			os.Exit(1)
+		}()
+
 		c, err := net.Dial("tcp", *addr)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "net.Dial(%q): %s\n", *addr, err.Error())
 			os.Exit(2)
 		}
-		fc := fnet.FromOrderedStream(c, *frameSize)
+		fc = fnet.FromOrderedStream(c, *frameSize)
 		err = clockprinter.Run(fc)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "clockprinter.Run: %s\n", err.Error())

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/andres-erbsen/rrtcp/clockprinter"
@@ -23,6 +25,22 @@ func main() {
 		os.Exit(1)
 	}
 	if *listen {
+		var cs *clockstation.ClockStation
+		var fc fnet.FrameConn
+
+		// Handle stop signals
+		stop := make(chan os.Signal, 2)
+		done := make(chan bool, 1)
+		signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+		go func() {
+			<-stop
+			cs.Stop()
+			fc.Stop()
+			done <- true
+			fmt.Println("Stopped listener.")
+			os.Exit(1)
+		}()
+
 		localAddr, err := net.ResolveUDPAddr("udp", *addr)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "net.ResolveUDPAddr(%q): %s\n", *addr, err.Error())
@@ -44,13 +62,27 @@ func main() {
 			fmt.Fprintf(os.Stderr, "net.DialUDP(\"udp\", %s, %s)", localAddr, remoteAddr, err.Error())
 			os.Exit(4)
 		}
-		fc := fnet.Wrap(c, *frameSize)
-		err = clockstation.Run(fc, time.Tick(50*time.Millisecond))
+		fc = fnet.Wrap(c, *frameSize)
+		cs = clockstation.NewStation(fc, time.Tick(50*time.Millisecond))
+		err = cs.Run()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "clockstation.Run: %s\n", err.Error())
 			os.Exit(5)
 		}
+		<-done
 	} else {
+		var fc fnet.FrameConn
+
+		// Handle stop signals
+		stop := make(chan os.Signal, 2)
+		signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+		go func() {
+			<-stop
+			fc.Stop()
+			fmt.Println("Stopped dialer.")
+			os.Exit(1)
+		}()
+
 		remoteAddr, err := net.ResolveUDPAddr("udp", *addr)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "net.ResolveUDPAddr(%q): %s\n", *addr, err.Error())
@@ -67,7 +99,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "write UDP dummy to", remoteAddr, err.Error())
 			os.Exit(4)
 		}
-		fc := fnet.Wrap(c, *frameSize)
+		fc = fnet.Wrap(c, *frameSize)
 		err = clockprinter.Run(fc)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "clockprinter.Run: %s\n", err.Error())

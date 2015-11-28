@@ -50,3 +50,8 @@ func (fs *framedStream) RecvFrame(b []byte) (int, error) {
 	}
 	return io.ReadFull(fs.c, b[:sz])
 }
+
+// RecvFrame implements FrameConn.Stop
+func (fs *framedStream) Stop() {
+	fs.c.Close()
+}
