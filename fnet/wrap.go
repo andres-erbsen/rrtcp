@@ -1,6 +1,9 @@
 package fnet
 
-import "net"
+import (
+	"fmt"
+	"net"
+)
 
 type netConn struct {
 	c         net.Conn
@@ -17,6 +20,9 @@ func (c netConn) FrameSize() int {
 }
 
 func (c netConn) SendFrame(bs []byte) error {
+	if len(bs) != c.frameSize {
+		return fmt.Errorf("Tried to send byte of length %d instead of %d", len(bs), c.frameSize)
+	}
 	_, err := c.c.Write(bs)
 	return err
 }

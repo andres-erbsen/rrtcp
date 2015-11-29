@@ -44,6 +44,7 @@ func (rrs *RrStream) FrameSize() int {
 	return rrs.frameSize
 }
 
+// TODO: Make it so that this can be called more than once freely
 func (rrs *RrStream) Stop() {
 	close(rrs.stopCh)
 	for _, stream := range rrs.pool {
@@ -113,8 +114,14 @@ func (rrs *RrStream) SendFrame(b []byte) error {
 // It pulls the next frame out of the rec channel
 // This method should be running continously to prevent blocking on the rec chan
 func (rrs *RrStream) RecvFrame(b []byte) (int, error) {
-	frame := <-rrs.rec
-	copy(b[:len(frame)], frame)
+	for {
+		select {
+		case <-rrs.stopCh: // Stop this thread
+			return 0, errors.New("Stream stopped.")
+		case frame := <-rrs.rec:
+			copy(b[:len(frame)], frame)
 
-	return len(frame), nil
+			return len(frame), nil
+		}
+	}
 }

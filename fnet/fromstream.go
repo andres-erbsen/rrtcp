@@ -2,6 +2,7 @@ package fnet
 
 import (
 	"encoding/binary"
+	"fmt"
 	"io"
 	"net"
 )
@@ -25,6 +26,9 @@ func (fs *framedStream) FrameSize() int {
 
 // SendFrame implements FrameConn.SendFrame
 func (fs *framedStream) SendFrame(b []byte) error {
+	if len(b) != fs.frameSize {
+		return fmt.Errorf("Tried to send byte of length %d instead of %d", len(b), fs.frameSize)
+	}
 	b2 := make([]byte, binary.MaxVarintLen64+len(b))
 	i := binary.PutUvarint(b2, uint64(len(b)))
 	if copy(b2[i:], b) != len(b) {

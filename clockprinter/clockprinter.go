@@ -15,8 +15,8 @@ func Run(fc fnet.FrameConn) error {
 		if err != nil {
 			return err
 		}
-		if n < 8 {
-			return fmt.Errorf("frame too small (got %d, wanted >= 8)", n)
+		if n < fc.FrameSize() {
+			return fmt.Errorf("frame too small (got %d, wanted %d", n, fc.FrameSize())
 		}
 		fmt.Printf("%d %d\n", int64(binary.LittleEndian.Uint64(bs[:8])), time.Now().UnixNano())
 	}

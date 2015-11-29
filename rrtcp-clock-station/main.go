@@ -40,7 +40,6 @@ func main() {
 
 func listener(frameSize *int, numStreams *int, addr *string) error {
 	var cs *clockstation.ClockStation
-	var fc fnet.FrameConn
 
 	// Handle stop signals
 	// TODO: Is there a better place to put this?
@@ -52,10 +51,8 @@ func listener(frameSize *int, numStreams *int, addr *string) error {
 	go func() {
 		<-stop
 		cs.Stop()
-		fc.Stop()
 		done <- true
 		fmt.Println("Stopped listener.")
-		os.Exit(1)
 	}()
 
 	ln, err := net.Listen("tcp", *addr)
@@ -73,10 +70,11 @@ func listener(frameSize *int, numStreams *int, addr *string) error {
 		}
 		rrs.AddStream(c)
 	}
-	fc = fnet.FrameConn(rrs)
+	fc := fnet.FrameConn(rrs)
+	defer fc.Stop()
 
 	cs = clockstation.NewStation(fc, time.Tick(50*time.Millisecond))
-	err = cs.Run()
+	err = cs.Run(*frameSize)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "clockstation.Run: %s\n", err.Error())
 		return err
@@ -96,9 +94,9 @@ func dialer(frameSize *int, numStreams *int, addr *string) error {
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-stop
+		// TODO: This should be a defer instead, when .Stop() can be called more than once freely
 		fc.Stop()
 		fmt.Println("Stopped dialer.")
-		os.Exit(1)
 	}()
 
 	rrs := fnet.NewStream(*frameSize)

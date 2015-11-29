@@ -25,85 +25,100 @@ func main() {
 		os.Exit(1)
 	}
 	if *listen {
-		var cs *clockstation.ClockStation
-		var fc fnet.FrameConn
-
-		// Handle stop signals
-		stop := make(chan os.Signal, 2)
-		done := make(chan bool, 1)
-		signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
-		go func() {
-			<-stop
-			cs.Stop()
-			fc.Stop()
-			done <- true
-			fmt.Println("Stopped listener.")
-			os.Exit(1)
-		}()
-
-		localAddr, err := net.ResolveUDPAddr("udp", *addr)
+		err := listener(frameSize, addr)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "net.ResolveUDPAddr(%q): %s\n", *addr, err.Error())
-			os.Exit(2)
+			os.Exit(2) // TODO: More appropriate per-case error number
 		}
-		lc, err := net.ListenUDP("udp", localAddr)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "net.Listen(%q): %s\n", *addr, err.Error())
-			os.Exit(2)
-		}
-		_, remoteAddr, err := lc.ReadFromUDP(nil)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "lc.ReadFromUDP(): %s\n", err.Error())
-			os.Exit(3)
-		}
-		lc.Close()
-		c, err := net.DialUDP("udp", localAddr, remoteAddr)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "net.DialUDP(\"udp\", %s, %s)", localAddr, remoteAddr, err.Error())
-			os.Exit(4)
-		}
-		fc = fnet.Wrap(c, *frameSize)
-		cs = clockstation.NewStation(fc, time.Tick(50*time.Millisecond))
-		err = cs.Run()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "clockstation.Run: %s\n", err.Error())
-			os.Exit(5)
-		}
-		<-done
 	} else {
-		var fc fnet.FrameConn
-
-		// Handle stop signals
-		stop := make(chan os.Signal, 2)
-		signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
-		go func() {
-			<-stop
-			fc.Stop()
-			fmt.Println("Stopped dialer.")
-			os.Exit(1)
-		}()
-
-		remoteAddr, err := net.ResolveUDPAddr("udp", *addr)
+		err := dialer(frameSize, addr)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "net.ResolveUDPAddr(%q): %s\n", *addr, err.Error())
 			os.Exit(2)
-		}
-		c, err := net.DialUDP("udp", nil, remoteAddr)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "net.DialUDP(\"udp\", nil, %s)", remoteAddr, err.Error())
-			os.Exit(3)
-		}
-		// TODO: resend dummy with exp. backoff until we get some response
-		_, err = c.Write(nil)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "write UDP dummy to", remoteAddr, err.Error())
-			os.Exit(4)
-		}
-		fc = fnet.Wrap(c, *frameSize)
-		err = clockprinter.Run(fc)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "clockprinter.Run: %s\n", err.Error())
-			os.Exit(5)
 		}
 	}
+}
+
+func listener(frameSize *int, addr *string) error {
+	var cs *clockstation.ClockStation
+
+	// Handle stop signals
+	stop := make(chan os.Signal, 2)
+	done := make(chan bool, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-stop
+		cs.Stop()
+		done <- true
+		fmt.Println("Stopped listener.")
+	}()
+
+	localAddr, err := net.ResolveUDPAddr("udp", *addr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "net.ResolveUDPAddr(%q): %s\n", *addr, err.Error())
+		return err
+	}
+	lc, err := net.ListenUDP("udp", localAddr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "net.Listen(%q): %s\n", *addr, err.Error())
+		return err
+	}
+	_, remoteAddr, err := lc.ReadFromUDP(nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "lc.ReadFromUDP(): %s\n", err.Error())
+		return err
+	}
+	lc.Close()
+	c, err := net.DialUDP("udp", localAddr, remoteAddr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "net.DialUDP(\"udp\", %s, %s)", localAddr, remoteAddr, err.Error())
+		return err
+	}
+	fc := fnet.Wrap(c, *frameSize)
+	defer fc.Stop()
+
+	cs = clockstation.NewStation(fc, time.Tick(50*time.Millisecond))
+	err = cs.Run(*frameSize)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "clockstation.Run: %s\n", err.Error())
+		return err
+	}
+	<-done
+	return nil
+}
+
+func dialer(frameSize *int, addr *string) error {
+	var fc fnet.FrameConn
+
+	// Handle stop signals
+	stop := make(chan os.Signal, 2)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-stop
+		fc.Stop()
+		fmt.Println("Stopped dialer.")
+	}()
+
+	remoteAddr, err := net.ResolveUDPAddr("udp", *addr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "net.ResolveUDPAddr(%q): %s\n", *addr, err.Error())
+		return err
+	}
+	c, err := net.DialUDP("udp", nil, remoteAddr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "net.DialUDP(\"udp\", nil, %s)", remoteAddr, err.Error())
+		return err
+	}
+	// TODO: resend dummy with exp. backoff until we get some response
+	_, err = c.Write(nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "write UDP dummy to", remoteAddr, err.Error())
+		return err
+	}
+	fc = fnet.Wrap(c, *frameSize)
+	err = clockprinter.Run(fc)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "clockprinter.Run: %s\n", err.Error())
+		fc.Stop()
+		return err
+	}
+	return nil
 }

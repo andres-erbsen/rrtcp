@@ -23,14 +23,14 @@ func NewStation(fc fnet.FrameConn, tick <-chan time.Time) *ClockStation {
 	return cs
 }
 
-func (cs *ClockStation) Run() error {
+func (cs *ClockStation) Run(frameSize int) error {
 	defer close(cs.stopped)
-	var b [8]byte
+	var b = make([]byte, frameSize)
 	for {
 		select {
 		case t := <-cs.tick:
 			ns := t.UnixNano()
-			binary.LittleEndian.PutUint64(b[:], uint64(ns))
+			binary.LittleEndian.PutUint64(b[:8], uint64(ns))
 			if err := cs.fc.SendFrame(b[:]); err != nil {
 				return err
 			}
