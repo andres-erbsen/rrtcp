@@ -39,10 +39,10 @@ def runTest(test, delay, loss, name):
     net.start()
 
     h1, h2 = net.get('h1', 'h2')
-    outputName = name + '_' + str(delay) + '_' + str(loss)
+    outputName = name + '_' + str(delay) + '_' + str(loss)+'.out'
 
-    h1.cmd( '../' + test + '/' + test + ' -l -d ' + str(timeToRun) + '-address ' + h1.IP() + ':8080 &' )
-    h2.cmd( '../' + test + '/' + test + ' -d ' + str(timeToRun) + ' -address ' + h1.IP() + ':8080 > ' + outputName + ' &' )
+    h1.cmd( '../' + test + '/' + test + ' -l -d ' + str(timeToRun) + ' -address ' + h1.IP() + ':8080 2>'+outputName+'.listener.err &' )
+    h2.cmd( '../' + test + '/' + test + ' -d ' + str(timeToRun) + ' -address ' + h1.IP() + ':8080 > ' + outputName + ' 2>'+outputName+'.dialer.err &' )
     time.sleep(timeToRun + 1)
 
     net.stop()
