@@ -15,6 +15,6 @@ type FrameConn interface {
 	// RecvFrame receives a bounded-size fram over the connection
 	// PRE: b :->[] mm, len(mm) = FrameSize.
 	// RET: b :->[] bs, len(bs) = FrameSize
-	// EFF: if err = nil then RecvFrame(firstn n received) else (RecvFrame(firstn n bs) OR NoEffects)
+	// EFF: if err = nil then RecvFrame(bs) else (RecvFrame(bs) OR NoEffects)
 	RecvFrame(b []byte) (n int, err error)
 }
