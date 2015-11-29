@@ -18,6 +18,7 @@ var addr = flag.String("address", "", "address to connect to or listen at")
 var listen = flag.Bool("l", false, "bind to the specified address and listen (default: connect)")
 var frameSize = flag.Int("s", 1024, "frame size")
 var numStreams = flag.Int("n", 5, "number of streams")
+var duration = flag.Int("d", 20, "number of seconds to run program for")
 
 func main() {
 	flag.Parse()
@@ -25,31 +26,41 @@ func main() {
 		flag.Usage()
 		os.Exit(1)
 	}
+	var stop chan os.Signal
+	stop = make(chan os.Signal, 2)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		timer := time.NewTimer(time.Second * time.Duration(*duration))
+		// Wait for the timer to end, then give the stop signal
+		<-timer.C
+		stop <- syscall.SIGINT
+	}()
+
 	if *listen {
-		err := listener(frameSize, numStreams, addr)
+		err := listener(frameSize, numStreams, addr, stop)
 		if err != nil {
 			os.Exit(2) // TODO: More appropriate per-case error number
 		}
 	} else {
-		err := dialer(frameSize, numStreams, addr)
+		err := dialer(frameSize, numStreams, addr, stop)
 		if err != nil {
 			os.Exit(2)
 		}
 	}
 }
 
-func listener(frameSize *int, numStreams *int, addr *string) error {
+func listener(frameSize *int, numStreams *int, addr *string, stop chan os.Signal) error {
 	var cs *clockstation.ClockStation
 
 	// Handle stop signals
 	// TODO: Is there a better place to put this?
 	// TODO: Assumes cs, rrs have been defined
 	// TODO: Is it better to os.Exit() or return?
-	stop := make(chan os.Signal, 2)
 	done := make(chan bool, 1)
-	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-stop
+		fmt.Println(cs)
 		cs.Stop()
 		done <- true
 		fmt.Println("Stopped listener.")
@@ -84,14 +95,12 @@ func listener(frameSize *int, numStreams *int, addr *string) error {
 	return nil
 }
 
-func dialer(frameSize *int, numStreams *int, addr *string) error {
+func dialer(frameSize *int, numStreams *int, addr *string, stop chan os.Signal) error {
 	var fc fnet.FrameConn
 
 	// Handle stop signals
 	// TODO: Is there a better place to put this?
 	// TODO: Assumes rrs has been defined
-	stop := make(chan os.Signal, 2)
-	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-stop
 		// TODO: This should be a defer instead, when .Stop() can be called more than once freely

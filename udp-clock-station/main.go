@@ -17,6 +17,7 @@ import (
 var addr = flag.String("address", "", "address to connect to or listen at")
 var listen = flag.Bool("l", false, "bind to the specified address and listen (default: connect)")
 var frameSize = flag.Int("s", 1024, "frame size")
+var duration = flag.Int("d", 20, "number of seconds to run program for")
 
 func main() {
 	flag.Parse()
@@ -24,26 +25,36 @@ func main() {
 		flag.Usage()
 		os.Exit(1)
 	}
+
+	var stop chan os.Signal
+	stop = make(chan os.Signal, 2)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		timer := time.NewTimer(time.Second * time.Duration(*duration))
+		// Wait for the timer to end, then give the stop signal
+		<-timer.C
+		stop <- syscall.SIGINT
+	}()
+
 	if *listen {
-		err := listener(frameSize, addr)
+		err := listener(frameSize, addr, stop)
 		if err != nil {
 			os.Exit(2) // TODO: More appropriate per-case error number
 		}
 	} else {
-		err := dialer(frameSize, addr)
+		err := dialer(frameSize, addr, stop)
 		if err != nil {
 			os.Exit(2)
 		}
 	}
 }
 
-func listener(frameSize *int, addr *string) error {
+func listener(frameSize *int, addr *string, stop chan os.Signal) error {
 	var cs *clockstation.ClockStation
 
 	// Handle stop signals
-	stop := make(chan os.Signal, 2)
 	done := make(chan bool, 1)
-	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-stop
 		cs.Stop()
@@ -85,12 +96,10 @@ func listener(frameSize *int, addr *string) error {
 	return nil
 }
 
-func dialer(frameSize *int, addr *string) error {
+func dialer(frameSize *int, addr *string, stop chan os.Signal) error {
 	var fc fnet.FrameConn
 
 	// Handle stop signals
-	stop := make(chan os.Signal, 2)
-	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-stop
 		fc.Stop()
