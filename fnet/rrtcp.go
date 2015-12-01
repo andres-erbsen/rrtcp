@@ -2,123 +2,135 @@ package fnet
 
 import (
 	"errors"
-	"net"
 	"sync"
 )
 
-const recBufSize = 20 // This is a total guess as to a reasonable buffer size for our receive channel
+const recvBufSize = 20 // This is a total guess as to a reasonable buffer size for our recveive channel
 
-type RrStream struct {
-	pool       []*framedStream
-	poolLock   sync.Mutex // Lock for changing the pool and pool related values (numStreams)
-	frameSize  int
-	numStreams int
-	nextStream int         // The index of the next stream to send a packet on
-	rec        chan []byte // Queue of received packets
-	wg         sync.WaitGroup
-	stopCh     chan struct{}
+type RoundRobin struct {
+	pool      []*FrameConn
+	poolLock  sync.Mutex // Lock for changing the pool and pool related values (numConn)
+	frameSize int
+	numConn   int
+	nextConn  int         // The index of the next stream to send a packet on
+	recv      chan []byte // Queue of received packets
+	wg        sync.WaitGroup
+	stopCh    chan struct{}
 }
 
-func (rrs *RrStream) AddStream(conn net.Conn) {
-	stream := &framedStream{conn, rrs.frameSize}
-
-	rrs.poolLock.Lock()
-	rrs.numStreams++
-	rrs.pool = append(rrs.pool, stream)
-	rrs.poolLock.Unlock()
+func (rr *RoundRobin) AddConn(fc *FrameConn) {
+	rr.poolLock.Lock()
+	rr.numConn++
+	rr.pool = append(rr.pool, fc)
+	rr.poolLock.Unlock()
 	// Start a new thread for listening to every connection
-	rrs.wg.Add(1)
-	go rrs.listen(stream)
+	rr.wg.Add(1)
+	go rr.listen(fc)
 }
 
-func NewStream(frameSize int) *RrStream {
-	var streamPool []*framedStream
+func NewRoundRobin(frameSize int) *RoundRobin {
+	var conn []*FrameConn
 	var wg sync.WaitGroup
 	var lock sync.Mutex
-	rrs := &RrStream{streamPool, lock, frameSize, 0, 0, make(chan []byte, recBufSize), wg, make(chan struct{})}
-	return rrs
+	rr := &RoundRobin{
+		pool:      conn,
+		poolLock:  lock,
+		frameSize: frameSize,
+		numConn:   0,
+		nextConn:  0,
+		recv:      make(chan []byte, recvBufSize),
+		wg:        wg,
+		stopCh:    make(chan struct{}),
+	}
+	return rr
 }
 
 // FrameSize implements FrameConn.FrameSize
-func (rrs *RrStream) FrameSize() int {
-	return rrs.frameSize
+func (rr *RoundRobin) FrameSize() int {
+	return rr.frameSize
 }
 
 // TODO: Make it so that this can be called more than once freely
-func (rrs *RrStream) Stop() {
-	close(rrs.stopCh)
-	for _, stream := range rrs.pool {
-		stream.c.Close()
+func (rr *RoundRobin) Stop() {
+	close(rr.stopCh)
+	for _, conn := range rr.pool {
+		(*conn).Stop()
 	}
-	rrs.wg.Wait()
+	rr.wg.Wait()
 }
 
 // listen for incoming packets and add them to the received queue
-func (rrs *RrStream) listen(fs *framedStream) {
-	defer rrs.wg.Done()
+func (rr *RoundRobin) listen(fc *FrameConn) {
+	defer rr.wg.Done()
 	for {
-		buf := make([]byte, rrs.frameSize)
-		sz, err := fs.RecvFrame(buf)
+		buf := make([]byte, rr.frameSize)
+		sz, err := (*fc).RecvFrame(buf)
 		if err != nil {
 			select {
-			case <-rrs.stopCh: // Stop this thread
+			case <-rr.stopCh: // Stop this thread
 				return
 			default:
 				// Remove the stream if the connection is sad
-				rrs.RemoveStream(fs)
+				rr.RemoveConn(fc)
 				return
 			}
 		}
-		rrs.rec <- buf[:sz]
+		rr.recv <- buf[:sz]
 	}
 }
 
 // TODO: Implement this more efficiently
-func (rrs *RrStream) RemoveStream(fs *framedStream) {
-	fs.c.Close()
-	rrs.poolLock.Lock()
+func (rr *RoundRobin) RemoveConn(fc *FrameConn) {
+	(*fc).Stop()
+	rr.poolLock.Lock()
 
 	// Get index of stream
 	// TODO: Exception if doesn't exist at all
-	var fsIndex int
-	for index, stream := range rrs.pool {
-		if stream == fs {
-			fsIndex = index
+	var fcIndex int
+	for index, conn := range rr.pool {
+		if conn == fc {
+			fcIndex = index
 			break
 		}
 	}
 
-	rrs.numStreams--
-	if rrs.nextStream >= rrs.numStreams {
-		rrs.nextStream = 0
+	rr.numConn--
+	if rr.nextConn >= rr.numConn {
+		rr.nextConn = 0
 	}
-	rrs.pool = append(rrs.pool[:fsIndex], rrs.pool[fsIndex+1:]...)
-	rrs.poolLock.Unlock()
+	rr.pool = append(rr.pool[:fcIndex], rr.pool[fcIndex+1:]...)
+	rr.poolLock.Unlock()
 }
 
-// SendFrae implements FrameConn.SendFrame
-func (rrs *RrStream) SendFrame(b []byte) error {
-	rrs.poolLock.Lock()
-	if rrs.numStreams == 0 {
+// SendFrame implements FrameConn.SendFrame
+func (rr *RoundRobin) SendFrame(b []byte) error {
+	rr.poolLock.Lock()
+	if rr.numConn == 0 {
 		return errors.New("No streams to send packets on.")
 	}
-	fs := rrs.pool[rrs.nextStream]
-	err := fs.SendFrame(b)
-	// TODO: Should we actually move up to the next stream if there's an error?
-	rrs.nextStream = (rrs.nextStream + 1) % rrs.numStreams // Get the next round-robin index
-	rrs.poolLock.Unlock()
-	return err
+	fc := rr.pool[rr.nextConn]
+	err := (*fc).SendFrame(b)
+	if err != nil {
+		// TODO: Does Go keep the lock if it's in the same thread? Will this work?
+		rr.RemoveConn(fc)
+		if rr.numConn == 0 {
+			return errors.New("No streams to send packets on.")
+		}
+	}
+	rr.nextConn = (rr.nextConn + 1) % rr.numConn // Get the next round-robin index
+	rr.poolLock.Unlock()
+	return nil
 }
 
 // RecvFrame implements FrameConn.RecvFrame
-// It pulls the next frame out of the rec channel
-// This method should be running continously to prevent blocking on the rec chan
-func (rrs *RrStream) RecvFrame(b []byte) (int, error) {
+// It pulls the next frame out of the recv channel
+// This method should be running continously to prevent blocking on the recv chan
+func (rr *RoundRobin) RecvFrame(b []byte) (int, error) {
 	for {
 		select {
-		case <-rrs.stopCh: // Stop this thread
+		case <-rr.stopCh: // Stop this thread
 			return 0, errors.New("Stream stopped.")
-		case frame := <-rrs.rec:
+		case frame := <-rr.recv:
 			copy(b[:len(frame)], frame)
 
 			return len(frame), nil

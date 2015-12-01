@@ -18,7 +18,7 @@ var addr = flag.String("address", "", "address to connect to or listen at")
 var listen = flag.Bool("l", false, "bind to the specified address and listen (default: connect)")
 var frameSize = flag.Int("s", 1024, "frame size")
 var numStreams = flag.Int("n", 5, "number of streams")
-var duration = flag.Int("d", 20, "number of seconds to run program for")
+var duration = flag.Int("d", -1, "number of seconds to run program for, -1 means run forever")
 
 func main() {
 	flag.Parse()
@@ -31,61 +31,67 @@ func main() {
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
-		timer := time.NewTimer(time.Second * time.Duration(*duration))
-		// Wait for the timer to end, then give the stop signal
-		<-timer.C
-		stop <- syscall.SIGINT
+		if *duration != -1 {
+			timer := time.NewTimer(time.Second * time.Duration(*duration))
+			// Wait for the timer to end, then give the stop signal
+			<-timer.C
+			stop <- syscall.SIGINT
+		}
 	}()
 
 	if *listen {
-		err := listener(frameSize, numStreams, addr, stop)
+		err := listener(*frameSize, *numStreams, *addr, stop)
 		if err != nil {
-			os.Exit(2) // TODO: More appropriate per-case error number
+			os.Exit(2)
 		}
 	} else {
-		err := dialer(frameSize, numStreams, addr, stop)
+		err := dialer(*frameSize, *numStreams, *addr, stop)
 		if err != nil {
 			os.Exit(2)
 		}
 	}
 }
 
-func listener(frameSize *int, numStreams *int, addr *string, stop chan os.Signal) error {
+func listener(frameSize int, numStreams int, addr string, stop chan os.Signal) error {
 	var cs *clockstation.ClockStation
+	cs_running := false
 
 	// Handle stop signals
-	// TODO: Is there a better place to put this?
-	// TODO: Assumes cs, rrs have been defined
-	// TODO: Is it better to os.Exit() or return?
 	done := make(chan bool, 1)
 	go func() {
 		<-stop
 		fmt.Println(cs)
-		cs.Stop()
+		// TODO: Not sure if this boolean is the best solution
+		if cs_running {
+			cs.Stop()
+		}
 		done <- true
 		fmt.Println("Stopped listener.")
 	}()
 
-	ln, err := net.Listen("tcp", *addr)
+	ln, err := net.Listen("tcp", addr)
+	defer ln.Close()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "net.Listen(%q): %s\n", *addr, err.Error())
+		fmt.Fprintf(os.Stderr, "net.Listen(%q): %s\n", addr, err.Error())
 		return err
 	}
-	rrs := fnet.NewStream(*frameSize)
+	rr := fnet.NewRoundRobin(frameSize)
 
-	for i := 0; i < *numStreams; i++ {
+	for i := 0; i < numStreams; i++ {
 		c, err := ln.Accept()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ln.Accept(): %s\n", err.Error())
 			return err
 		}
-		rrs.AddStream(c)
+		fs := fnet.FromOrderedStream(c, frameSize)
+		rr.AddConn(&fs)
 	}
-	fc := fnet.FrameConn(rrs)
+	fc := fnet.FrameConn(rr)
 	defer fc.Stop()
 
 	cs = clockstation.NewStation(fc, time.Tick(50*time.Millisecond))
-	err = cs.Run(*frameSize)
+	cs_running = true
+	err = cs.Run(frameSize)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "clockstation.Run: %s\n", err.Error())
 		return err
@@ -95,29 +101,32 @@ func listener(frameSize *int, numStreams *int, addr *string, stop chan os.Signal
 	return nil
 }
 
-func dialer(frameSize *int, numStreams *int, addr *string, stop chan os.Signal) error {
+func dialer(frameSize int, numStreams int, addr string, stop chan os.Signal) error {
 	var fc fnet.FrameConn
+	fc_started := false
 
 	// Handle stop signals
-	// TODO: Is there a better place to put this?
-	// TODO: Assumes rrs has been defined
 	go func() {
 		<-stop
 		// TODO: This should be a defer instead, when .Stop() can be called more than once freely
-		fc.Stop()
+		if fc_started {
+			fc.Stop()
+		}
 		fmt.Println("Stopped dialer.")
 	}()
 
-	rrs := fnet.NewStream(*frameSize)
-	for i := 0; i < *numStreams; i++ {
-		c, err := net.Dial("tcp", *addr)
+	rr := fnet.NewRoundRobin(frameSize)
+	for i := 0; i < numStreams; i++ {
+		c, err := net.Dial("tcp", addr)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "net.Dial(%q): %s\n", *addr, err.Error())
+			fmt.Fprintf(os.Stderr, "net.Dial(%q): %s\n", addr, err.Error())
 			return err
 		}
-		rrs.AddStream(c)
+		fs := fnet.FromOrderedStream(c, frameSize)
+		rr.AddConn(&fs)
 	}
-	fc = fnet.FrameConn(rrs)
+	fc = fnet.FrameConn(rr)
+	fc_started = true
 
 	err := clockprinter.Run(fc)
 	if err != nil {

@@ -17,7 +17,7 @@ import (
 var addr = flag.String("address", "", "address to connect to or listen at")
 var listen = flag.Bool("l", false, "bind to the specified address and listen (default: connect)")
 var frameSize = flag.Int("s", 1024, "frame size")
-var duration = flag.Int("d", 20, "number of seconds to run program for")
+var duration = flag.Int("d", -1, "number of seconds to run program for, -1 means run forever")
 
 func main() {
 	flag.Parse()
@@ -31,10 +31,12 @@ func main() {
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
-		timer := time.NewTimer(time.Second * time.Duration(*duration))
-		// Wait for the timer to end, then give the stop signal
-		<-timer.C
-		stop <- syscall.SIGINT
+		if *duration != -1 {
+			timer := time.NewTimer(time.Second * time.Duration(*duration))
+			// Wait for the timer to end, then give the stop signal
+			<-timer.C
+			stop <- syscall.SIGINT
+		}
 	}()
 
 	if *listen {
@@ -63,6 +65,7 @@ func listener(frameSize *int, addr *string, stop chan os.Signal) error {
 	}()
 
 	ln, err := net.Listen("tcp", *addr)
+	defer ln.Close()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "net.Listen(%q): %s\n", *addr, err.Error())
 		return err
