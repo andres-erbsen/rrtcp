@@ -9,6 +9,8 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/net/context"
+
 	"github.com/andres-erbsen/rrtcp/clockprinter"
 	"github.com/andres-erbsen/rrtcp/clockstation"
 	"github.com/andres-erbsen/rrtcp/fnet"
@@ -16,118 +18,112 @@ import (
 
 var addr = flag.String("address", "", "address to connect to or listen at")
 var listen = flag.Bool("l", false, "bind to the specified address and listen (default: connect)")
+var duration = flag.Duration("d", 0, "duration to run program for")
+var interval = flag.Duration("i", 50*time.Millisecond, "inter-packet interval")
 var frameSize = flag.Int("s", 1024, "frame size")
-var duration = flag.Int("d", 20, "number of seconds to run program for")
+
+func cancelOnSignal(ctx context.Context, sig ...os.Signal) context.Context {
+	signalCh := make(chan os.Signal)
+	signal.Notify(signalCh, sig...)
+
+	ctx2, cancel := context.WithCancel(ctx)
+
+	go func() {
+		select {
+		case <-ctx2.Done():
+			return
+		case <-signalCh:
+			cancel()
+		}
+	}()
+
+	return ctx2
+}
 
 func main() {
+	fmt.Fprintln(os.Stderr, os.Args)
 	flag.Parse()
 	if len(flag.Args()) != 0 || *listen == false && *addr == "" {
 		flag.Usage()
 		os.Exit(1)
 	}
 
-	var stop chan os.Signal
-	stop = make(chan os.Signal, 2)
-	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
-
-	go func() {
-		timer := time.NewTimer(time.Second * time.Duration(*duration))
-		// Wait for the timer to end, then give the stop signal
-		<-timer.C
-		stop <- syscall.SIGINT
-	}()
+	ctx := cancelOnSignal(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	if duration != nil && *duration != time.Duration(0) {
+		ctx, _ = context.WithTimeout(ctx, *duration)
+	}
 
 	if *listen {
-		err := listener(frameSize, addr, stop)
-		if err != nil {
-			os.Exit(2) // TODO: More appropriate per-case error number
-		}
-	} else {
-		err := dialer(frameSize, addr, stop)
-		if err != nil {
+		if err := listener(ctx, *frameSize, *addr, *interval); err != nil {
+			fmt.Fprintf(os.Stderr, "%s\n", err)
 			os.Exit(2)
 		}
+	} else {
+		if err := dialer(ctx, *frameSize, *addr); err != nil {
+			fmt.Fprintf(os.Stderr, "%s\n", err)
+			os.Exit(3)
+		}
 	}
+	fmt.Fprintln(os.Stderr, "end main")
 }
 
-func listener(frameSize *int, addr *string, stop chan os.Signal) error {
-	var cs *clockstation.ClockStation
-
-	// Handle stop signals
-	done := make(chan bool, 1)
-	go func() {
-		<-stop
-		cs.Stop()
-		done <- true
-		fmt.Println("Stopped listener.")
-	}()
-
-	localAddr, err := net.ResolveUDPAddr("udp", *addr)
+func listener(ctx context.Context, frameSize int, addr string, interval time.Duration) error {
+	localAddr, err := net.ResolveUDPAddr("udp", addr)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "net.ResolveUDPAddr(%q): %s\n", *addr, err.Error())
-		return err
+		return fmt.Errorf("net.ResolveUDPAddr(%q): %s\n", addr, err.Error())
 	}
 	lc, err := net.ListenUDP("udp", localAddr)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "net.Listen(%q): %s\n", *addr, err.Error())
-		return err
+		return fmt.Errorf("net.Listen(%q): %s\n", addr, err.Error())
 	}
+	go func() {
+		<-ctx.Done()
+		lc.Close()
+	}()
+
 	_, remoteAddr, err := lc.ReadFromUDP(nil)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "lc.ReadFromUDP(): %s\n", err.Error())
-		return err
+		return fmt.Errorf("lc.ReadFromUDP(): %s\n", err.Error())
 	}
 	lc.Close()
+
 	c, err := net.DialUDP("udp", localAddr, remoteAddr)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "net.DialUDP(\"udp\", %s, %s)", localAddr, remoteAddr, err.Error())
-		return err
+		return fmt.Errorf("net.DialUDP(\"udp\", nil, %s): %s", remoteAddr, err.Error())
 	}
-	fc := fnet.Wrap(c, *frameSize)
-	defer fc.Stop()
 
-	cs = clockstation.NewStation(fc, time.Tick(50*time.Millisecond))
-	err = cs.Run(*frameSize)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "clockstation.Run: %s\n", err.Error())
-		return err
+	if err := clockstation.Run(ctx, fnet.Wrap(c, frameSize), time.Tick(interval)); err != nil {
+		return fmt.Errorf("clockstation.Run: %s\n", err.Error())
 	}
-	<-done
 	return nil
 }
 
-func dialer(frameSize *int, addr *string, stop chan os.Signal) error {
-	var fc fnet.FrameConn
-
-	// Handle stop signals
+func dialer(ctx context.Context, frameSize int, addr string) error {
+	remoteAddr, err := net.ResolveUDPAddr("udp", addr)
+	if err != nil {
+		fmt.Errorf("net.ResolveUDPAddr(%q): %s\n", addr, err.Error())
+	}
+	c1, err := net.DialUDP("udp", nil, remoteAddr)
+	if err != nil {
+		return fmt.Errorf("net.DialUDP(\"udp\", nil, %s): %s", remoteAddr, err.Error())
+	}
 	go func() {
-		<-stop
-		fc.Stop()
-		fmt.Println("Stopped dialer.")
+		<-ctx.Done()
+		c1.Close()
 	}()
 
-	remoteAddr, err := net.ResolveUDPAddr("udp", *addr)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "net.ResolveUDPAddr(%q): %s\n", *addr, err.Error())
-		return err
-	}
-	c, err := net.DialUDP("udp", nil, remoteAddr)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "net.DialUDP(\"udp\", nil, %s)", remoteAddr, err.Error())
-		return err
-	}
+	c2, err := net.DialUDP("udp", nil, remoteAddr)
 	// TODO: resend dummy with exp. backoff until we get some response
-	_, err = c.Write(nil)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "write UDP dummy to", remoteAddr, err.Error())
-		return err
+	if _, err = c2.Write(nil); err != nil {
+		return fmt.Errorf("write UDP dummy to %s: %s", remoteAddr, err.Error())
 	}
-	fc = fnet.Wrap(c, *frameSize)
-	err = clockprinter.Run(fc)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "clockprinter.Run: %s\n", err.Error())
-		fc.Stop()
-		return err
+	go func() {
+		<-ctx.Done()
+		c2.Close()
+	}()
+
+	if err := clockprinter.Run(ctx, fnet.Wrap(c2, frameSize)); err != nil {
+		fmt.Errorf("clockprinter.Run: %s\n", err.Error())
 	}
 	return nil
 }

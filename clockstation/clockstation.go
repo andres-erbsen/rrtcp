@@ -4,43 +4,27 @@ import (
 	"encoding/binary"
 	"time"
 
+	"golang.org/x/net/context"
+
 	"github.com/andres-erbsen/rrtcp/fnet"
 )
 
-type ClockStation struct {
-	fc      fnet.FrameConn
-	tick    <-chan time.Time
-	stopCh  chan struct{}
-	stopped chan struct{}
-}
-
 // Start starts a new clock station. The connection argument is wrapped.
 // PRE: fc :-> fnet.FrameConn
+// POST: ret = error OR nil
 // EFF: sends each value from ticker over fc (nanoseconds in little-endian 64-bit signed unix epoch format) until stop is called
-
-func NewStation(fc fnet.FrameConn, tick <-chan time.Time) *ClockStation {
-	cs := &ClockStation{fc, tick, make(chan struct{}), make(chan struct{})}
-	return cs
-}
-
-func (cs *ClockStation) Run(frameSize int) error {
-	defer close(cs.stopped)
-	var b = make([]byte, frameSize)
+func Run(ctx context.Context, fc fnet.FrameConn, tick <-chan time.Time) error {
+	var b = make([]byte, fc.FrameSize())
 	for {
 		select {
-		case t := <-cs.tick:
+		case t := <-tick:
 			ns := t.UnixNano()
 			binary.LittleEndian.PutUint64(b[:8], uint64(ns))
-			if err := cs.fc.SendFrame(b[:]); err != nil {
+			if err := fc.SendFrame(b[:]); err != nil {
 				return err
 			}
-		case <-cs.stopCh:
+		case <-ctx.Done():
 			return nil
 		}
 	}
-}
-
-func (cs *ClockStation) Stop() {
-	close(cs.stopCh)
-	<-cs.stopped
 }
