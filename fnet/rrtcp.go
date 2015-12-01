@@ -113,13 +113,12 @@ func (rr *RoundRobin) SendFrame(b []byte) error {
 	if err != nil {
 		rr.poolLock.Unlock()
 		rr.RemoveConn(fc)
-		if rr.numConn == 0 {
-			return errors.New("No streams to send packets on.")
-		}
+		return err
+	} else {
+		rr.nextConn = (rr.nextConn + 1) % rr.numConn // Get the next round-robin index
+		rr.poolLock.Unlock()
+		return nil
 	}
-	rr.nextConn = (rr.nextConn + 1) % rr.numConn // Get the next round-robin index
-	rr.poolLock.Unlock()
-	return nil
 }
 
 // RecvFrame implements FrameConn.RecvFrame
