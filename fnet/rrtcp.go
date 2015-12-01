@@ -111,15 +111,14 @@ func (rr *RoundRobin) SendFrame(b []byte) error {
 	fc := rr.pool[rr.nextConn]
 	err := (*fc).SendFrame(b)
 	if err != nil {
-		// TODO: Does Go keep the lock if it's in the same thread? Will this work?
+		rr.poolLock.Unlock()
 		rr.RemoveConn(fc)
-		if rr.numConn == 0 {
-			return errors.New("No streams to send packets on.")
-		}
+		return err
+	} else {
+		rr.nextConn = (rr.nextConn + 1) % rr.numConn // Get the next round-robin index
+		rr.poolLock.Unlock()
+		return nil
 	}
-	rr.nextConn = (rr.nextConn + 1) % rr.numConn // Get the next round-robin index
-	rr.poolLock.Unlock()
-	return nil
 }
 
 // RecvFrame implements FrameConn.RecvFrame
