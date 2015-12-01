@@ -1,0 +1,215 @@
+#* 
+#* author: Andres Erbsen
+#* email: andreser@mit.edu
+#* date: 2015-11-29T16:47:14-0500
+#* 
+#- 
+#- udp clock station
+#- 
+#- 
+#- Untested clock station
+#- 
+#- 
+#- Successfully tested rrtcp implementation
+#- 
+#- 
+#- Graceful stop method actually uses channels, still untested
+#- 
+#- 
+#- Tested graceful stop for rrtcp clock station
+#- 
+#- 
+#- Added mandatory stop method, graceful stop for all clockstations
+#- 
+#- 
+#- Added fixed length frames, cleaned up graceful stop code a little but it's still awful
+#- 
+#- 
+#- Added duration code
+#- 
+diff --git a/rrtcp-clock-station/main.go b/rrtcp-clock-station/main.go
+new file mode 100644
+index 0000000..c0ae365
+--- /dev/null
++++ b/rrtcp-clock-station/main.go
+@@ -0,0 +1,128 @@
++package main
++
++import (
++	"flag"
++	"fmt"
++	"net"
++	"os"
++	"os/signal"
++	"syscall"
++	"time"
++
++	"github.com/andres-erbsen/rrtcp/clockprinter"
++	"github.com/andres-erbsen/rrtcp/clockstation"
++	"github.com/andres-erbsen/rrtcp/fnet"
++)
++
++var addr = flag.String("address", "", "address to connect to or listen at")
++var listen = flag.Bool("l", false, "bind to the specified address and listen (default: connect)")
++var frameSize = flag.Int("s", 1024, "frame size")
++var numStreams = flag.Int("n", 5, "number of streams")
++var duration = flag.Int("d", 20, "number of seconds to run program for")
+#*
+#* author: Andres Erbsen
+#* email: andreser@mit.edu
+#* date: 2015-11-29T16:48:51-0500
+#*
+#- Please add an option to specify infinite duration, document it, and make it
+#- the default.
+#-
++
++func main() {
++	flag.Parse()
++	if len(flag.Args()) != 0 || *listen == false && *addr == "" {
++		flag.Usage()
++		os.Exit(1)
++	}
++	var stop chan os.Signal
++	stop = make(chan os.Signal, 2)
++	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
++
++	go func() {
++		timer := time.NewTimer(time.Second * time.Duration(*duration))
++		// Wait for the timer to end, then give the stop signal
++		<-timer.C
++		stop <- syscall.SIGINT
++	}()
++
++	if *listen {
++		err := listener(frameSize, numStreams, addr, stop)
++		if err != nil {
++			os.Exit(2) // TODO: More appropriate per-case error number
+#*
+#* author: Andres Erbsen
+#* email: andreser@mit.edu
+#* date: 2015-11-29T16:50:01-0500
+#*
+#- This is not important. As our cases are totally arbitrary anyway, having
+#- separate numbers is just a debugging aid, not a meaningful interface.
+#-
++		}
++	} else {
++		err := dialer(frameSize, numStreams, addr, stop)
++		if err != nil {
++			os.Exit(2)
++		}
++	}
++}
++
++func listener(frameSize *int, numStreams *int, addr *string, stop chan os.Signal) error {
+#*
+#* author: Andres Erbsen
+#* email: andreser@mit.edu
+#* date: 2015-11-29T16:51:41-0500
+#*
+#- Why are frameSize, numStreams and addr pointers?
+#-
++	var cs *clockstation.ClockStation
++
++	// Handle stop signals
++	// TODO: Is there a better place to put this?
++	// TODO: Assumes cs, rrs have been defined
++	// TODO: Is it better to os.Exit() or return?
++	done := make(chan bool, 1)
++	go func() {
++		<-stop
++		fmt.Println(cs)
++		cs.Stop()
+#*
+#* author: Andres Erbsen
+#* email: andreser@mit.edu
+#* date: 2015-11-29T16:56:21-0500
+#*
+#- What if <-stop happens before the clockstation is created?
+#-
++		done <- true
++		fmt.Println("Stopped listener.")
++	}()
++
++	ln, err := net.Listen("tcp", *addr)
++	if err != nil {
++		fmt.Fprintf(os.Stderr, "net.Listen(%q): %s\n", *addr, err.Error())
++		return err
++	}
+#*
+#* author: Andres Erbsen
+#* email: andreser@mit.edu
+#* date: 2015-11-29T16:57:13-0500
+#*
+#- Close the listener? Or is it used somehere later? We could just keep
+#- listening and adding connections... (and defer the Close)
+#-
++	rrs := fnet.NewStream(*frameSize)
++
++	for i := 0; i < *numStreams; i++ {
++		c, err := ln.Accept()
++		if err != nil {
++			fmt.Fprintf(os.Stderr, "ln.Accept(): %s\n", err.Error())
++			return err
++		}
++		rrs.AddStream(c)
++	}
++	fc := fnet.FrameConn(rrs)
++	defer fc.Stop()
++
++	cs = clockstation.NewStation(fc, time.Tick(50*time.Millisecond))
+#*
+#* author: Andres Erbsen
+#* email: andreser@mit.edu
+#* date: 2015-11-29T16:59:02-0500
+#*
+#- For all clockstations: could we make the frame rate a command line parameter?
+#-
++	err = cs.Run(*frameSize)
++	if err != nil {
++		fmt.Fprintf(os.Stderr, "clockstation.Run: %s\n", err.Error())
++		return err
++	}
++	// Wait for listener to be stopped before returning
++	<-done
++	return nil
++}
++
++func dialer(frameSize *int, numStreams *int, addr *string, stop chan os.Signal) error {
++	var fc fnet.FrameConn
++
++	// Handle stop signals
++	// TODO: Is there a better place to put this?
++	// TODO: Assumes rrs has been defined
+#*
+#* author: Andres Erbsen
+#* email: andreser@mit.edu
+#* date: 2015-11-29T17:02:06-0500
+#*
+#- What does assuming rrs has been defined mean?
+#-
++	go func() {
++		<-stop
++		// TODO: This should be a defer instead, when .Stop() can be called more than once freely
++		fc.Stop()
++		fmt.Println("Stopped dialer.")
++	}()
++
++	rrs := fnet.NewStream(*frameSize)
++	for i := 0; i < *numStreams; i++ {
++		c, err := net.Dial("tcp", *addr)
++		if err != nil {
++			fmt.Fprintf(os.Stderr, "net.Dial(%q): %s\n", *addr, err.Error())
++			return err
++		}
++		rrs.AddStream(c)
++	}
++	fc = fnet.FrameConn(rrs)
++
++	err := clockprinter.Run(fc)
++	if err != nil {
++		fmt.Fprintf(os.Stderr, "clockprinter.Run: %s\n", err.Error())
++		return err
++	}
++	return nil
++}

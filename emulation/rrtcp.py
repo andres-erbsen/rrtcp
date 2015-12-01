@@ -10,29 +10,43 @@ import time
 
 class SingleSwitchTopo(Topo):
    "Single switch connected to n hosts."
-   def build(self, n=2):
+   def build(self, delay, loss):
        switch = self.addSwitch('s1')
-       for h in range(n):
+       for h in range(2):
            host = self.addHost('h%s' % (h + 1))
            # 10 Mbps, 5ms delay, 10% loss, 1000 packet queue
            self.addLink(host, switch,
-              bw=10, delay='5ms', loss=10, max_queue_size=1000, use_htb=True)
+              bw=10, delay=str(delay) + 'ms', loss=loss, max_queue_size=1000, use_htb=True)
 
-def test():
-    topo = SingleSwitchTopo(n=2)
+def runTests():
+    tcpTest = 'tcp-clock-station'
+    udpTest = 'udp-clock-station'
+    rrtcpTest = 'rrtcp-clock-station'
+
+    # latency: 0ms..100ms
+    # loss: 0%..10%
+    for delay in xrange(0, 100, 100):
+        for loss in xrange(0, 10, 10):
+            runTest(tcpTest, delay, loss, 'tcp')
+            runTest(udpTest, delay, loss, 'udp')
+            runTest(rrtcpTest, delay, loss, 'rrtcp')
+
+
+def runTest(test, delay, loss, name):
+    timeToRun = 5 # seconds
+    topo = SingleSwitchTopo(delay, loss)
     net = Mininet( topo=topo, link=TCLink )
     net.start()
 
     h1, h2 = net.get('h1', 'h2')
-    print h1.cmd( 'ping -c10', h2.IP() )
-    h1.cmd( '../tcp-clock-station/tcp-clock-station -l -address ' + h1.IP() + ':8080 &' )
-    h2.cmd( '../tcp-clock-station/tcp-clock-station -address ' + h2.IP() + ':8080 > output &' )
-    time.sleep(2)
-    h1.cmd('kill %tcp-clock-station')
-    h2.cmd('kill %tcp-clock-station')
+    outputName = name + '_' + str(delay) + '_' + str(loss)+'.out'
+
+    h1.cmd( '../' + test + '/' + test + ' -l -d ' + str(timeToRun) + ' -address ' + h1.IP() + ':8080 2>'+outputName+'.listener.err &' )
+    h2.cmd( '../' + test + '/' + test + ' -d ' + str(timeToRun) + ' -address ' + h1.IP() + ':8080 > ' + outputName + ' 2>'+outputName+'.dialer.err &' )
+    time.sleep(timeToRun + 1)
 
     net.stop()
 
 if __name__ == '__main__':
    setLogLevel('info')
-   test()
+   runTests()

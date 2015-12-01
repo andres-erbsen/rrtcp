@@ -1,0 +1,272 @@
+#* 
+#* author: Andres Erbsen
+#* email: andreser@mit.edu
+#* date: 2015-11-29T16:03:00-0500
+#* 
+#- FrameConn interface
+#- 
+#- 
+#- FromStream: fix bug that sends zeros
+#- 
+#- 
+#- tcp clockstation code
+#- 
+#- 
+#- Basic round robin TCP implementation, untested and no graceful stop
+#- 
+#- 
+#- Successfully tested rrtcp implementation
+#- 
+#- 
+#- adding mininet emulation script
+#- 
+#- 
+#- Graceful stop method actually uses channels, still untested
+#- 
+#- 
+#- Tested graceful stop for rrtcp clock station
+#- 
+#- 
+#- Added mandatory stop method, graceful stop for all clockstations
+#- 
+#- 
+#- Added fixed length frames, cleaned up graceful stop code a little but it's still awful
+#- 
+#- 
+#- update emulation script to run a variety of latencies and losses
+#- 
+#- 
+#- RecvFrame effects are also constant length
+#- 
+diff --git a/fnet/rrtcp.go b/fnet/rrtcp.go
+new file mode 100644
+index 0000000..a1551c2
+--- /dev/null
++++ b/fnet/rrtcp.go
+@@ -0,0 +1,127 @@
++package fnet
++
++import (
++	"errors"
++	"net"
++	"sync"
++)
++
++const recBufSize = 20 // This is a total guess as to a reasonable buffer size for our receive channel
++
++type RrStream struct {
+#*
+#* author: Andres Erbsen
+#* email: andreser@mit.edu
+#* date: 2015-11-29T16:24:51-0500
+#*
+#- I propose chanigng this name to RoundRobin because it does not implement a
+#- strame interface (the frames are not ordered and no mapping of a stream to
+#- the frames is done.
+#-
++	pool       []*framedStream
++	poolLock   sync.Mutex // Lock for changing the pool and pool related values (numStreams)
++	frameSize  int
++	numStreams int
++	nextStream int         // The index of the next stream to send a packet on
++	rec        chan []byte // Queue of received packets
+#*
+#* author: Andres Erbsen
+#* email: andreser@mit.edu
+#* date: 2015-11-29T16:28:08-0500
+#*
+#- rec -> recv for consistency with Unix history
+#-
++	wg         sync.WaitGroup
++	stopCh     chan struct{}
++}
++
++func (rrs *RrStream) AddStream(conn net.Conn) {
++	stream := &framedStream{conn, rrs.frameSize}
+#*
+#* author: Andres Erbsen
+#* email: andreser@mit.edu
+#* date: 2015-11-29T16:28:35-0500
+#*
+#- Could this take in a FrameConn instead of net.Conn? RrStream should not need to know about how the underlying frame connections are implemented.
+#-
++
++	rrs.poolLock.Lock()
++	rrs.numStreams++
++	rrs.pool = append(rrs.pool, stream)
++	rrs.poolLock.Unlock()
++	// Start a new thread for listening to every connection
++	rrs.wg.Add(1)
++	go rrs.listen(stream)
++}
++
++func NewStream(frameSize int) *RrStream {
+#*
+#* author: Andres Erbsen
+#* email: andreser@mit.edu
+#* date: 2015-11-29T16:29:38-0500
+#*
+#- NewStream -> NewRoundRobin (explained in a comment near the struct declaration)
+#-
++	var streamPool []*framedStream
++	var wg sync.WaitGroup
++	var lock sync.Mutex
++	rrs := &RrStream{streamPool, lock, frameSize, 0, 0, make(chan []byte, recBufSize), wg, make(chan struct{})}
+#*
+#* author: Andres Erbsen
+#* email: andreser@mit.edu
+#* date: 2015-11-29T16:30:19-0500
+#*
+#- Please use key-value style initializers:
+#- rrs := &RrStream{
+#- 	pool: streamPool,
+#- 	...
+#- }
+#-
++	return rrs
++}
++
++// FrameSize implements FrameConn.FrameSize
++func (rrs *RrStream) FrameSize() int {
++	return rrs.frameSize
++}
++
++// TODO: Make it so that this can be called more than once freely
+#*
+#* author: Andres Erbsen
+#* email: andreser@mit.edu
+#* date: 2015-11-29T16:34:23-0500
+#*
+#- One way of doing this would be to use context.WithCancel (the returned
+#- cancel function is idempotent) instead of a stop channel.
+#-
++func (rrs *RrStream) Stop() {
++	close(rrs.stopCh)
++	for _, stream := range rrs.pool {
++		stream.c.Close()
++	}
++	rrs.wg.Wait()
++}
++
++// listen for incoming packets and add them to the received queue
++func (rrs *RrStream) listen(fs *framedStream) {
+#*
+#* author: Andres Erbsen
+#* email: andreser@mit.edu
+#* date: 2015-11-29T16:34:54-0500
+#*
+#- listen -> recvLoop
+#-
++	defer rrs.wg.Done()
++	for {
++		buf := make([]byte, rrs.frameSize)
++		sz, err := fs.RecvFrame(buf)
++		if err != nil {
++			select {
++			case <-rrs.stopCh: // Stop this thread
++				return
++			default:
++				// Remove the stream if the connection is sad
++				rrs.RemoveStream(fs)
++				return
++			}
+#*
+#* author: Andres Erbsen
+#* email: andreser@mit.edu
+#* date: 2015-11-29T16:35:37-0500
+#*
+#- What if stopCh gets closed after entering the default case and before
+#- calling rrs.RemoveStream? It might make sense to use CSP style code instead
+#- of locks. In that case, there would be a long-running thread that has
+#- exclusive access to the pool and other threads would request additions and
+#- deletions through channels. Then the default case could be replaced with
+#- blocking on the delete request. If you wanted to take this all the
+#- long-running thread could handle a send request by removing the firs channel
+#- and starting a thread that would send and then return this channel (which
+#- would be added to the end of the list of channels).
+#-
+#-
++		}
++		rrs.rec <- buf[:sz]
++	}
++}
++
++// TODO: Implement this more efficiently
+#*
+#* author: Andres Erbsen
+#* email: andreser@mit.edu
+#* date: 2015-11-29T16:39:14-0500
+#*
+#- A linked list (container/list.List) would probably allow for a more
+#- efficient implementation. I don't think this is urgently necessary right
+#- now.
+#-
++func (rrs *RrStream) RemoveStream(fs *framedStream) {
++	fs.c.Close()
++	rrs.poolLock.Lock()
++
++	// Get index of stream
++	// TODO: Exception if doesn't exist at all
++	var fsIndex int
++	for index, stream := range rrs.pool {
++		if stream == fs {
++			fsIndex = index
++			break
++		}
++	}
++
++	rrs.numStreams--
++	if rrs.nextStream >= rrs.numStreams {
++		rrs.nextStream = 0
++	}
++	rrs.pool = append(rrs.pool[:fsIndex], rrs.pool[fsIndex+1:]...)
++	rrs.poolLock.Unlock()
++}
++
++// SendFrae implements FrameConn.SendFrame
+#*
+#* author: Andres Erbsen
+#* email: andreser@mit.edu
+#* date: 2015-11-29T16:42:15-0500
+#*
+#- SendFrae -> SendFrame
+#-
++func (rrs *RrStream) SendFrame(b []byte) error {
++	rrs.poolLock.Lock()
++	if rrs.numStreams == 0 {
++		return errors.New("No streams to send packets on.")
++	}
++	fs := rrs.pool[rrs.nextStream]
++	err := fs.SendFrame(b)
++	// TODO: Should we actually move up to the next stream if there's an error?
+#*
+#* author: Andres Erbsen
+#* email: andreser@mit.edu
+#* date: 2015-11-29T16:43:02-0500
+#*
+#-  I don't think it is important whether we retry sending a packet in case of
+#-  a send error or not. However, we definitely should remove dead streams from
+#-  the pool AND return an error in case the pool is empty. It is okay for
+#-  SendFrame to return nil in case of an error that might as well been packet
+#-  loss.
+#-
++	rrs.nextStream = (rrs.nextStream + 1) % rrs.numStreams // Get the next round-robin index
++	rrs.poolLock.Unlock()
++	return err
++}
++
++// RecvFrame implements FrameConn.RecvFrame
++// It pulls the next frame out of the rec channel
++// This method should be running continously to prevent blocking on the rec chan
++func (rrs *RrStream) RecvFrame(b []byte) (int, error) {
++	for {
++		select {
++		case <-rrs.stopCh: // Stop this thread
++			return 0, errors.New("Stream stopped.")
++		case frame := <-rrs.rec:
++			copy(b[:len(frame)], frame)
++
++			return len(frame), nil
++		}
++	}
++}
