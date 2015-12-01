@@ -1,6 +1,9 @@
+#!/usr/bin/python
+
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import mlab
+from config import delayIntervals, lossIntervals
 
 def readFile(type, delay, loss):
     packetTimes = []
@@ -14,26 +17,30 @@ def readFile(type, delay, loss):
 
 def plot(tcp, udp, rrtcp, delay, loss):
     bins = 50
-    if tcp:
-        plt.hist(tcp, bins=bins, normed=1, histtype='step', cumulative=True)
-    if udp:
-        plt.hist(udp, bins=bins, normed=1, histtype='step', cumulative=True)
-    if rrtcp:
-        plt.hist(rrtcp, bins=bins, normed=1, histtype='step', cumulative=True)
+
+    tcpHist = plt.hist(tcp, bins=bins, normed=1, histtype='step', cumulative=True)
+    udpHist = plt.hist(udp, bins=bins, normed=1, histtype='step', cumulative=True)
+    rrtcpHist = plt.hist(rrtcp, bins=bins, normed=1, histtype='step', cumulative=True)
 
     plt.grid(True)
     plt.ylim(0, 1.05)
     plt.xlim(0, max(tcp + udp + rrtcp))
+
     plt.title('Packet Flight Time with ' + str(delay) + 'ms delay and ' + str(loss) + '% loss')
     plt.xlabel('milliseconds')
     plt.ylabel('packets')
+    plt.legend(handles=[tcpHist, udpHist, rrtcpHist])
 
     plt.show()
 
 if __name__ == '__main__':
-    delay = 80
-    loss = 10
-    tcp = readFile('tcp', delay, loss)
-    udp = readFile('udp', delay, loss)
-    rrtcp = readFile('rrtcp', delay, loss)
-    plot(tcp, udp, rrtcp, delay, loss)
+    # iterate over all delays and losses
+    for delay in delayIntervals:
+        for loss in lossIntervals:
+            tcp = readFile('tcp', delay, loss)
+            udp = readFile('udp', delay, loss)
+            rrtcp = readFile('rrtcp', delay, loss)
+
+            # only plot if we have data on all of them
+            if tcp and udp and rrtcp:
+                plot(tcp, udp, rrtcp, delay, loss)
