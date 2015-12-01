@@ -3,6 +3,9 @@ package fnet
 type FrameConn interface {
 	FrameSize() int
 
+	//Gracefully stop the FrameConn
+	Stop()
+
 	// SendFrame sends a bounded-size frame over the connection.
 	// PRE: b :->[] bs, len(bs) = FrameSize
 	// RET: b :->[] xs, len(xs) = FrameSize
