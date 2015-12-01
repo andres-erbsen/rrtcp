@@ -5,12 +5,19 @@ import (
 	"fmt"
 	"time"
 
+	"golang.org/x/net/context"
+
 	"github.com/andres-erbsen/rrtcp/fnet"
 )
 
-func Run(fc fnet.FrameConn) error {
+func Run(ctx context.Context, fc fnet.FrameConn) error {
 	bs := make([]byte, fc.FrameSize())
 	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
 		n, err := fc.RecvFrame(bs)
 		if err != nil {
 			return err
