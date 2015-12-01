@@ -23,10 +23,8 @@ def runTests():
     udpTest = 'udp-clock-station'
     rrtcpTest = 'rrtcp-clock-station'
 
-    # latency: 0ms..100ms
-    # loss: 0%..10%
-    for delay in xrange(0, 100, 100):
-        for loss in xrange(0, 10, 10):
+    for delay in [0, 40, 80, 160]:
+        for loss in [0, 5, 10]:
             runTest(tcpTest, delay, loss, 'tcp')
             runTest(udpTest, delay, loss, 'udp')
             runTest(rrtcpTest, delay, loss, 'rrtcp')
