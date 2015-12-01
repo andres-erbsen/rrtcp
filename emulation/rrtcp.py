@@ -16,7 +16,7 @@ class SingleSwitchTopo(Topo):
            host = self.addHost('h%s' % (h + 1))
            # 10 Mbps, 5ms delay, 10% loss, 1000 packet queue
            self.addLink(host, switch,
-              bw=10, delay=str(delay) + 'ms', loss=loss, max_queue_size=1000, use_htb=True)
+              bw=10, delay=str(delay/2) + 'ms', loss=loss, max_queue_size=1000, use_htb=True)
 
 def runTests():
     tcpTest = 'tcp-clock-station'
@@ -41,7 +41,7 @@ def runTest(test, delay, loss, name):
 
     h1.cmd( '../' + test + '/' + test + ' -l -d ' + str(timeToRun) + 's -address ' + h1.IP() + ':8080 2>'+outputName+'.listener.err &' )
     h2.cmd( '../' + test + '/' + test + ' -d ' + str(timeToRun) + 's -address ' + h1.IP() + ':8080 > ' + outputName + ' 2>'+outputName+'.dialer.err &' )
-    time.sleep(timeToRun + 1)
+    time.sleep(timeToRun + .1)
 
     net.stop()
 
