@@ -40,7 +40,6 @@ func cancelOnSignal(ctx context.Context, sig ...os.Signal) context.Context {
 	return ctx2
 }
 func main() {
-	fmt.Fprintln(os.Stderr, os.Args)
 	flag.Parse()
 	if len(flag.Args()) != 0 || *listen == false && *addr == "" {
 		flag.Usage()
@@ -63,7 +62,6 @@ func main() {
 			os.Exit(3)
 		}
 	}
-	fmt.Fprintln(os.Stderr, "end main")
 }
 
 func listener(ctx context.Context, frameSize int, addr string, interval time.Duration) error {
