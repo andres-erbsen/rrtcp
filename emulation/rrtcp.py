@@ -3,6 +3,7 @@
 from mininet.topo import Topo
 from mininet.net import Mininet
 from mininet.link import TCLink
+from mininet.log import setLogLevel
 from config import delayIntervals, lossIntervals, tcpTestLocation, udpTestLocation, rrtcpTestLocation
 import time
 
@@ -40,4 +41,5 @@ def runTest(testLocation, delay, loss, name):
     net.stop()
 
 if __name__ == '__main__':
-   runTests()
+    setLogLevel('info')
+    runTests()

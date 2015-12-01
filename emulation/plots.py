@@ -18,9 +18,9 @@ def readFile(type, delay, loss):
 def plot(tcp, udp, rrtcp, delay, loss):
     bins = 50
 
-    tcpHist = plt.hist(tcp, bins=bins, normed=1, histtype='step', cumulative=True)
-    udpHist = plt.hist(udp, bins=bins, normed=1, histtype='step', cumulative=True)
-    rrtcpHist = plt.hist(rrtcp, bins=bins, normed=1, histtype='step', cumulative=True)
+    tcpHist = plt.hist(tcp, bins=bins, normed=1, histtype='step', cumulative=True, label='TCP')
+    udpHist = plt.hist(udp, bins=bins, normed=1, histtype='step', cumulative=True, label='UDP')
+    rrtcpHist = plt.hist(rrtcp, bins=bins, normed=1, histtype='step', cumulative=True, label='RRTCP')
 
     plt.grid(True)
     plt.ylim(0, 1.05)
@@ -29,11 +29,13 @@ def plot(tcp, udp, rrtcp, delay, loss):
     plt.title('Packet Flight Time with ' + str(delay) + 'ms delay and ' + str(loss) + '% loss')
     plt.xlabel('milliseconds')
     plt.ylabel('packets')
-    plt.legend(handles=[tcpHist, udpHist, rrtcpHist])
+    plt.legend(loc='upper right')
 
     plt.show()
 
 if __name__ == '__main__':
+    thres = 3 # must have more than 3 lines
+
     # iterate over all delays and losses
     for delay in delayIntervals:
         for loss in lossIntervals:
@@ -42,5 +44,5 @@ if __name__ == '__main__':
             rrtcp = readFile('rrtcp', delay, loss)
 
             # only plot if we have data on all of them
-            if tcp and udp and rrtcp:
+            if len(tcp) > thres and len(udp) > thres and len(rrtcp) > thres:
                 plot(tcp, udp, rrtcp, delay, loss)
