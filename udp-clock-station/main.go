@@ -18,7 +18,7 @@ import (
 
 var addr = flag.String("address", "", "address to connect to or listen at")
 var listen = flag.Bool("l", false, "bind to the specified address and listen (default: connect)")
-var duration = flag.Duration("d", 0, "duration to run program for")
+var duration = flag.Duration("d", -1, "duration to run program for, -1 means run forever")
 var interval = flag.Duration("i", 50*time.Millisecond, "inter-packet interval")
 var frameSize = flag.Int("s", 1024, "frame size")
 
@@ -49,7 +49,7 @@ func main() {
 	}
 
 	ctx := cancelOnSignal(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	if duration != nil && *duration != time.Duration(0) {
+	if duration != nil && *duration != time.Duration(-1) {
 		ctx, _ = context.WithTimeout(ctx, *duration)
 	}
 
