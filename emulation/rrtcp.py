@@ -16,17 +16,15 @@ class SingleSwitchTopo(Topo):
            host = self.addHost('h%s' % (h + 1))
            # 10 Mbps, 5ms delay, 10% loss, 1000 packet queue
            self.addLink(host, switch,
-              bw=10, delay=str(delay) + 'ms', loss=loss, max_queue_size=1000, use_htb=True)
+              bw=10, delay=str(delay/2) + 'ms', loss=loss, max_queue_size=1000, use_htb=True)
 
 def runTests():
     tcpTest = 'tcp-clock-station'
     udpTest = 'udp-clock-station'
     rrtcpTest = 'rrtcp-clock-station'
 
-    # latency: 0ms..100ms
-    # loss: 0%..10%
-    for delay in xrange(0, 100, 100):
-        for loss in xrange(0, 10, 10):
+    for delay in [0, 40, 80, 160]:
+        for loss in [0, 5, 10]:
             runTest(tcpTest, delay, loss, 'tcp')
             runTest(udpTest, delay, loss, 'udp')
             runTest(rrtcpTest, delay, loss, 'rrtcp')
@@ -41,9 +39,9 @@ def runTest(test, delay, loss, name):
     h1, h2 = net.get('h1', 'h2')
     outputName = name + '_' + str(delay) + '_' + str(loss)+'.out'
 
-    h1.cmd( '../' + test + '/' + test + ' -l -d ' + str(timeToRun) + ' -address ' + h1.IP() + ':8080 2>'+outputName+'.listener.err &' )
-    h2.cmd( '../' + test + '/' + test + ' -d ' + str(timeToRun) + ' -address ' + h1.IP() + ':8080 > ' + outputName + ' 2>'+outputName+'.dialer.err &' )
-    time.sleep(timeToRun + 1)
+    h1.cmd( '../' + test + '/' + test + ' -l -d ' + str(timeToRun) + 's -address ' + h1.IP() + ':8080 2>'+outputName+'.listener.err &' )
+    h2.cmd( '../' + test + '/' + test + ' -d ' + str(timeToRun) + 's -address ' + h1.IP() + ':8080 > ' + outputName + ' 2>'+outputName+'.dialer.err &' )
+    time.sleep(timeToRun + .1)
 
     net.stop()
 
