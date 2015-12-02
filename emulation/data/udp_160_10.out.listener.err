@@ -1,3 +1,0 @@
-[../udp-clock-station/udp-clock-station -l -d 5s -address 10.0.0.1:8080]
-lc.ReadFromUDP(): read udp 10.0.0.1:8080: use of closed network connection
-

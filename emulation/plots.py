@@ -1,6 +1,9 @@
+#!/usr/bin/python
+
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import mlab
+from config import delayIntervals, lossIntervals
 
 large_packet_time = float(1010) # sufficiently large time to pretend to be a missed packet
 large_bin_size = 100 
