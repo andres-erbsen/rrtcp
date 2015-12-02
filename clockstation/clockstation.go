@@ -2,9 +2,9 @@ package clockstation
 
 import (
 	"encoding/binary"
-	"time"
-
+	"fmt"
 	"golang.org/x/net/context"
+	"time"
 
 	"github.com/andres-erbsen/rrtcp/fnet"
 )
@@ -23,6 +23,8 @@ func Run(ctx context.Context, fc fnet.FrameConn, tick <-chan time.Time) error {
 			if err := fc.SendFrame(b[:]); err != nil {
 				return err
 			}
+			fmt.Printf("%d\n", uint64(ns))
+			//		fmt.Printf("Sent frame %v", ns) yo
 		case <-ctx.Done():
 			return nil
 		}
