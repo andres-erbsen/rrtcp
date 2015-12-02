@@ -53,8 +53,8 @@ def plot(tcp, udp, rrtcp, delay, loss):
     plt.clf()
 
 if __name__ == '__main__':
-    for delay in [0, 40, 80, 160]:
-        for loss in [0, 5, 10]:
+    for delay in delayIntervals:
+        for loss in lossIntervals:
             tcp = readFile('tcp', delay, loss)
             udp = readFile('udp', delay, loss)
             rrtcp = readFile('rrtcp', delay, loss)
