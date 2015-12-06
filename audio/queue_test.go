@@ -2,17 +2,10 @@ package audio
 
 import (
 	"testing"
-  "fmt"
 )
 
-func Test(t *testing.T) {
+func TestInOrder(t *testing.T) {
 	queue := NewQueue()
-  fmt.Println("Push nothing")
-  if queue.Pull(1) != "NONE" {
-    t.Fail()
-  }
-
-  fmt.Println("Push in order")
   queue.Push(2, "a")
   queue.Push(3, "b")
   queue.Push(4, "c")
@@ -25,8 +18,10 @@ func Test(t *testing.T) {
   if queue.Pull(4) != "c" {
     t.Fail()
   }
+}
 
-  fmt.Println("Push out of order")
+func TestOutOfOrder(t *testing.T) {
+	queue := NewQueue()
   queue.Push(7, "f")
   queue.Push(6, "e")
   queue.Push(5, "d")
@@ -37,6 +32,16 @@ func Test(t *testing.T) {
     t.Fail()
   }
   if queue.Pull(7) != "f" {
+    t.Fail()
+  }
+}
+
+func TestNotInQueue(t *testing.T) {
+	queue := NewQueue()
+  if queue.Pull(0) != "NONE" {
+    t.Fail()
+  }
+  if queue.Pull(1) != "NONE" {
     t.Fail()
   }
 }
