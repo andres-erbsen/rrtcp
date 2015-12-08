@@ -74,7 +74,7 @@ func run(ctx context.Context, rendID *[32]byte, seed []byte, identifiable bool) 
 	}
 	defer tc1.Close()
 
-	//NOTE: it would be less wasteful to create two circuits on the same TorConn
+	//TODO: use the same path as the first circuit to enable reduction arguments about anonymity.
 	tc2, c2, err := tr.UnguardedCircuitTo(ctx, n, rendNode)
 	if err != nil {
 		return err
