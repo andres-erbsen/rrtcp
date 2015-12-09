@@ -1,0 +1,2 @@
+gst-launch-1.0 udpsrc port=5555 caps="application/x-rtp" ! rtpopusdepay ! opusdec ! audioconvert ! pulsesink
+gst-launch-1.0 pulsesrc ! opusenc ! rtpopuspay ! udpsink host=127.0.0.1 port=5555
