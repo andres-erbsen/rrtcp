@@ -89,7 +89,7 @@ func listener(ctx context.Context, frameSize int, numStreams int, addr string) e
 			return err
 		}
 		fs := fnet.FromOrderedStream(c, frameSize)
-		rr.AddConn(&fs)
+		rr.AddConn(fs)
 	}
 	fc := fnet.FrameConn(rr)
 
@@ -113,7 +113,7 @@ func dialer(ctx context.Context, frameSize int, numStreams int, addr string) err
 			return err
 		}
 		fs := fnet.FromOrderedStream(c, frameSize)
-		rr.AddConn(&fs)
+		rr.AddConn(fs)
 	}
 	fc := fnet.FrameConn(rr)
 
