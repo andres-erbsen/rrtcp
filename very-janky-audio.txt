@@ -1,4 +1,7 @@
-gst-launch-1.0 udpsrc port=5555 caps="application/x-rtp" ! rtpopusdepay ! opusdec ! audioconvert ! pulsesink
+send:
 
-gst-launch-1.0 pulsesrc ! opusenc ! rtpopuspay ! udpsink host=127.0.0.1 port=5555
-gst-launch-1.0 pulsesrc ! opusenc bitrate=$(echo '(509-12-16) * 8 * 1000/20' | bc) max-payload-size=$(echo 509-12-16|bc) packet-loss-percentage=5 inband-fec=true ! rtpopuspay ! udpsink host=127.0.0.1 port=5555
+gst-launch-1.0 pulsesrc ! opusenc bitrate=$(echo '(509-12-16) * 8 * 1000/20' | bc) max-payload-size=$(echo 509-12-16|bc) packet-loss-percentage=5 inband-fec=true ! rtpopuspay ! udpsink host=127.0.0.1 port=5000
+
+receive:
+
+gst-launch-1.0 udpsrc port=9001 caps="application/x-rtp" ! rtpjitterbuffer latency=100 ! rtpopusdepay ! opusdec ! audioconvert ! pulsesink
