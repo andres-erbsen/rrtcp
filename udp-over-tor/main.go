@@ -57,9 +57,11 @@ func run(ctx context.Context, rendID *[32]byte, seed []byte, identifiable bool, 
 	defer tr.Stop()
 
 	rendNode := tr.WithDirectory(func(dir *directory.Directory) interface{} {
-		shortInfos := make([]*directory.ShortNodeInfo, len(dir.Routers))
-		for i, r := range dir.Routers {
-			shortInfos[i] = r.ShortNodeInfo
+		shortInfos := make([]*directory.ShortNodeInfo, 0, len(dir.Routers))
+		for _, n := range dir.Routers {
+			if n.Fast && n.Running && n.Stable && n.Valid && (n.Port == 443 || n.Port == 80) {
+				shortInfos = append(shortInfos, n.ShortNodeInfo)
+			}
 		}
 		rendShort := nd.Pick(shortInfos, rendID)
 		for _, r := range dir.Routers {
@@ -114,7 +116,7 @@ func run(ctx context.Context, rendID *[32]byte, seed []byte, identifiable bool, 
 }
 
 func weigh(w *directory.BandwidthWeights, n *directory.NodeInfo) int64 {
-	if n.Fast && n.Running && n.Stable && n.Valid {
+	if n.Fast && n.Running && n.Stable && n.Valid && (n.Port == 443 || n.Port == 80) {
 		return w.ForRelay.Weigh(n)
 	}
 	return 0
