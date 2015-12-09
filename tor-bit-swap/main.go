@@ -9,6 +9,7 @@ import (
 	"golang.org/x/net/context"
 	"golang.org/x/net/proxy"
 
+	"github.com/andres-erbsen/rrtcp/fnet"
 	"github.com/andres-erbsen/torch"
 	"github.com/andres-erbsen/torch/directory"
 	"github.com/andres-erbsen/torch/nd"
@@ -63,27 +64,32 @@ func run(ctx context.Context, rendID *[32]byte, seed []byte, identifiable bool) 
 
 	// when we talk to a website over TOR, the website knows what the third hop
 	// is. Therefore our converstion partner may as well.
-	n := 3
-	if identifiable {
-		n = 1
+	nodes := make([]*directory.NodeInfo, 0, 3)
+	if !identifiable {
+		nodes = append(nodes, tr.Pick(weighRelayWith))
+		nodes = append(nodes, tr.Pick(weighRelayWith))
 	}
+	nodes = append(nodes, rendNode)
 
-	tc1, c1, err := tr.UnguardedCircuitTo(ctx, n, rendNode)
+	tc1, c1, err := torch.BuildCircuit(ctx, proxy.FromEnvironment(), nodes)
 	if err != nil {
 		return err
 	}
 	defer tc1.Close()
-
-	//TODO: use the same path as the first circuit to enable reduction arguments about anonymity.
-	tc2, c2, err := tr.UnguardedCircuitTo(ctx, n, rendNode)
+	tc2, c2, err := torch.BuildCircuit(ctx, proxy.FromEnvironment(), nodes)
 	if err != nil {
 		return err
 	}
 	defer tc2.Close()
 
 	ndc, err := nd.Handshake(ctx, c1, c2, seed)
+	var _ fnet.FrameConn = (ndc)
 
 	fmt.Printf("%#v\n", ndc.Bit)
 
 	return nil
+}
+
+func weighRelayWith(w *directory.BandwidthWeights, n *directory.NodeInfo) int64 {
+	return w.ForRelay.Weigh(n)
 }
