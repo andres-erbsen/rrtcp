@@ -51,10 +51,10 @@ func (rr *RoundRobin) FrameSize() int {
 }
 
 // TODO: Make it so that this can be called more than once freely
-func (rr *RoundRobin) Stop() {
+func (rr *RoundRobin) Close() {
 	close(rr.stopCh)
 	for _, conn := range rr.pool {
-		(*conn).Stop()
+		(*conn).Close()
 	}
 	rr.wg.Wait()
 }
@@ -81,7 +81,7 @@ func (rr *RoundRobin) listen(fc *FrameConn) {
 
 // TODO: Implement this more efficiently
 func (rr *RoundRobin) RemoveConn(fc *FrameConn) {
-	(*fc).Stop()
+	(*fc).Close()
 	rr.poolLock.Lock()
 
 	// Get index of stream

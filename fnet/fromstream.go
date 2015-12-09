@@ -56,6 +56,6 @@ func (fs *framedStream) RecvFrame(b []byte) (int, error) {
 }
 
 // RecvFrame implements FrameConn.Stop
-func (fs *framedStream) Stop() {
+func (fs *framedStream) Close() {
 	fs.c.Close()
 }

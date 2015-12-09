@@ -83,7 +83,7 @@ func listener(ctx context.Context, frameSize int, addr string) error {
 	fc := fnet.FromOrderedStream(c, frameSize)
 	go func() {
 		<-ctx.Done()
-		fc.Stop()
+		fc.Close()
 	}()
 
 	if err = clockstation.Run(ctx, fc, time.Tick(50*time.Millisecond)); err != nil {
@@ -102,7 +102,7 @@ func dialer(ctx context.Context, frameSize int, addr string) error {
 	fc := fnet.FromOrderedStream(c, frameSize)
 	go func() {
 		<-ctx.Done()
-		fc.Stop()
+		fc.Close()
 	}()
 
 	if err = clockprinter.Run(ctx, fc); err != nil {

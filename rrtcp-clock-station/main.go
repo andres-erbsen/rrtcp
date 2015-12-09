@@ -79,7 +79,7 @@ func listener(ctx context.Context, frameSize int, numStreams int, addr string) e
 	rr := fnet.NewRoundRobin(frameSize)
 	go func() {
 		<-ctx.Done()
-		rr.Stop()
+		rr.Close()
 	}()
 
 	for i := 0; i < numStreams; i++ {
@@ -103,7 +103,7 @@ func dialer(ctx context.Context, frameSize int, numStreams int, addr string) err
 	rr := fnet.NewRoundRobin(frameSize)
 	go func() {
 		<-ctx.Done()
-		rr.Stop()
+		rr.Close()
 	}()
 
 	for i := 0; i < numStreams; i++ {

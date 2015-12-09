@@ -31,6 +31,6 @@ func (c netConn) RecvFrame(bs []byte) (int, error) {
 	return c.c.Read(bs)
 }
 
-func (c netConn) Stop() {
+func (c netConn) Close() {
 	c.c.Close()
 }

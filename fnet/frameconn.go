@@ -4,7 +4,7 @@ type FrameConn interface {
 	FrameSize() int
 
 	//Gracefully stop the FrameConn
-	Stop()
+	Close()
 
 	// SendFrame sends a bounded-size frame over the connection.
 	// PRE: b :->[] bs, len(bs) = FrameSize
