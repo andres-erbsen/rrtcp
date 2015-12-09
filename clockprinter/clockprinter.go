@@ -18,12 +18,8 @@ func Run(ctx context.Context, fc fnet.FrameConn) error {
 			return ctx.Err()
 		default:
 		}
-		n, err := fc.RecvFrame(bs)
-		if err != nil {
+		if err := fc.RecvFrame(bs); err != nil {
 			return err
-		}
-		if n < fc.FrameSize() {
-			return fmt.Errorf("frame too small (got %d, wanted %d", n, fc.FrameSize())
 		}
 		fmt.Printf("%d %d\n", int64(binary.LittleEndian.Uint64(bs[:8])), time.Now().UnixNano())
 	}

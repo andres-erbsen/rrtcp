@@ -4,7 +4,7 @@ type FrameConn interface {
 	FrameSize() int
 
 	//Gracefully stop the FrameConn
-	Close()
+	Close() error
 
 	// SendFrame sends a bounded-size frame over the connection.
 	// PRE: b :->[] bs, len(bs) = FrameSize
@@ -16,5 +16,5 @@ type FrameConn interface {
 	// PRE: b :->[] mm, len(mm) = FrameSize.
 	// RET: b :->[] bs, len(bs) = FrameSize
 	// EFF: if err = nil then RecvFrame(bs) else (RecvFrame(bs) OR NoEffects)
-	RecvFrame(b []byte) (n int, err error)
+	RecvFrame(b []byte) (err error)
 }

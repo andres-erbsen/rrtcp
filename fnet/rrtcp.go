@@ -18,6 +18,8 @@ type RoundRobin struct {
 	stopCh    chan struct{}
 }
 
+var _ FrameConn = (*RoundRobin)(nil)
+
 func (rr *RoundRobin) AddConn(fc *FrameConn) {
 	rr.poolLock.Lock()
 	rr.numConn++
@@ -51,12 +53,14 @@ func (rr *RoundRobin) FrameSize() int {
 }
 
 // TODO: Make it so that this can be called more than once freely
-func (rr *RoundRobin) Close() {
+func (rr *RoundRobin) Close() error {
 	close(rr.stopCh)
+	var err error
 	for _, conn := range rr.pool {
-		(*conn).Close()
+		err = (*conn).Close()
 	}
 	rr.wg.Wait()
+	return err
 }
 
 // listen for incoming packets and add them to the received queue
@@ -64,8 +68,7 @@ func (rr *RoundRobin) listen(fc *FrameConn) {
 	defer rr.wg.Done()
 	for {
 		buf := make([]byte, rr.frameSize)
-		sz, err := (*fc).RecvFrame(buf)
-		if err != nil {
+		if err := (*fc).RecvFrame(buf); err != nil {
 			select {
 			case <-rr.stopCh: // Stop this thread
 				return
@@ -75,7 +78,7 @@ func (rr *RoundRobin) listen(fc *FrameConn) {
 				return
 			}
 		}
-		rr.recv <- buf[:sz]
+		rr.recv <- buf[:]
 	}
 }
 
@@ -124,15 +127,14 @@ func (rr *RoundRobin) SendFrame(b []byte) error {
 // RecvFrame implements FrameConn.RecvFrame
 // It pulls the next frame out of the recv channel
 // This method should be running continously to prevent blocking on the recv chan
-func (rr *RoundRobin) RecvFrame(b []byte) (int, error) {
+func (rr *RoundRobin) RecvFrame(b []byte) error {
 	for {
 		select {
 		case <-rr.stopCh: // Stop this thread
-			return 0, errors.New("Stream stopped.")
+			return errors.New("Stream stopped.")
 		case frame := <-rr.recv:
-			copy(b[:len(frame)], frame)
-
-			return len(frame), nil
+			copy(b, frame)
+			return nil
 		}
 	}
 }

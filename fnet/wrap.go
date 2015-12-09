@@ -27,10 +27,17 @@ func (c netConn) SendFrame(bs []byte) error {
 	return err
 }
 
-func (c netConn) RecvFrame(bs []byte) (int, error) {
-	return c.c.Read(bs)
+func (c netConn) RecvFrame(bs []byte) error {
+	n, err := c.c.Read(bs)
+	if err != nil {
+		return err
+	}
+	if n != len(bs) {
+		return fmt.Errorf("received frame of incorrect length")
+	}
+	return nil
 }
 
-func (c netConn) Close() {
-	c.c.Close()
+func (c netConn) Close() error {
+	return c.c.Close()
 }

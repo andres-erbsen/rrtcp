@@ -47,15 +47,16 @@ func (r byteReader) ReadByte() (byte, error) {
 }
 
 // RecvFrame implements FrameConn.RecvFrame
-func (fs *framedStream) RecvFrame(b []byte) (int, error) {
+func (fs *framedStream) RecvFrame(b []byte) error {
 	sz, err := binary.ReadUvarint(byteReader{fs.c})
 	if err != nil {
-		return 0, err
+		return err
 	}
-	return io.ReadFull(fs.c, b[:sz])
+	_, err = io.ReadFull(fs.c, b[:sz])
+	return err
 }
 
-// RecvFrame implements FrameConn.Stop
-func (fs *framedStream) Close() {
-	fs.c.Close()
+// RecvFrame implements FrameConn.Close
+func (fs *framedStream) Close() error {
+	return fs.c.Close()
 }
