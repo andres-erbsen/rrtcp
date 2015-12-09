@@ -73,10 +73,10 @@ func (rr *RoundRobin) listen(fc FrameConn) {
 		if err := fc.RecvFrame(buf); err != nil {
 			select {
 			case <-rr.stopCh: // Stop this thread
-				fmt.Printf("RoundRobin.listen: %v", err)
 				return
 			default:
 				// Remove the stream if the connection is sad
+				fmt.Printf("RoundRobin.listen: %v", err)
 				rr.RemoveConn(fc)
 				return
 			}
@@ -118,6 +118,7 @@ func (rr *RoundRobin) SendFrame(b []byte) error {
 	err := fc.SendFrame(b)
 	if err != nil {
 		rr.poolLock.Unlock()
+		fmt.Printf("RoundRobin.SendFrame: %v", err)
 		rr.RemoveConn(fc)
 		return err
 	} else {
