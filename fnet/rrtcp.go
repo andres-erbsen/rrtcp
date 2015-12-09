@@ -2,13 +2,14 @@ package fnet
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 )
 
 const recvBufSize = 20 // This is a total guess as to a reasonable buffer size for our recveive channel
 
 type RoundRobin struct {
-	pool      []*FrameConn
+	pool      []FrameConn
 	poolLock  sync.Mutex // Lock for changing the pool and pool related values (numConn)
 	frameSize int
 	numConn   int
@@ -20,18 +21,19 @@ type RoundRobin struct {
 
 var _ FrameConn = (*RoundRobin)(nil)
 
-func (rr *RoundRobin) AddConn(fc *FrameConn) {
+func (rr *RoundRobin) AddConn(fc FrameConn) {
 	rr.poolLock.Lock()
+	defer rr.poolLock.Unlock()
 	rr.numConn++
 	rr.pool = append(rr.pool, fc)
-	rr.poolLock.Unlock()
+
 	// Start a new thread for listening to every connection
 	rr.wg.Add(1)
 	go rr.listen(fc)
 }
 
 func NewRoundRobin(frameSize int) *RoundRobin {
-	var conn []*FrameConn
+	var conn []FrameConn
 	var wg sync.WaitGroup
 	var lock sync.Mutex
 	rr := &RoundRobin{
@@ -57,20 +59,21 @@ func (rr *RoundRobin) Close() error {
 	close(rr.stopCh)
 	var err error
 	for _, conn := range rr.pool {
-		err = (*conn).Close()
+		err = conn.Close()
 	}
 	rr.wg.Wait()
 	return err
 }
 
 // listen for incoming packets and add them to the received queue
-func (rr *RoundRobin) listen(fc *FrameConn) {
+func (rr *RoundRobin) listen(fc FrameConn) {
 	defer rr.wg.Done()
 	for {
 		buf := make([]byte, rr.frameSize)
-		if err := (*fc).RecvFrame(buf); err != nil {
+		if err := fc.RecvFrame(buf); err != nil {
 			select {
 			case <-rr.stopCh: // Stop this thread
+				fmt.Printf("RoundRobin.listen: %v", err)
 				return
 			default:
 				// Remove the stream if the connection is sad
@@ -83,8 +86,8 @@ func (rr *RoundRobin) listen(fc *FrameConn) {
 }
 
 // TODO: Implement this more efficiently
-func (rr *RoundRobin) RemoveConn(fc *FrameConn) {
-	(*fc).Close()
+func (rr *RoundRobin) RemoveConn(fc FrameConn) {
+	fc.Close()
 	rr.poolLock.Lock()
 
 	// Get index of stream
@@ -112,7 +115,7 @@ func (rr *RoundRobin) SendFrame(b []byte) error {
 		return errors.New("No streams to send packets on.")
 	}
 	fc := rr.pool[rr.nextConn]
-	err := (*fc).SendFrame(b)
+	err := fc.SendFrame(b)
 	if err != nil {
 		rr.poolLock.Unlock()
 		rr.RemoveConn(fc)
