@@ -9,6 +9,7 @@ import (
 
 	"golang.org/x/net/context"
 	"golang.org/x/net/proxy"
+	mathrand "math/rand"
 
 	"github.com/andres-erbsen/rrtcp/clockprinter"
 	"github.com/andres-erbsen/rrtcp/clockstation"
@@ -18,10 +19,9 @@ import (
 	"github.com/andres-erbsen/torch/nd"
 )
 
+var deterministic = flag.Int("deterministic", -1, "seed for deterministic path selection")
 var identifiable = flag.Bool("i", false, "skip TOR anonymization")
 var numStreams = flag.Int("n", 1, "number of streams")
-var udpSourceListen = flag.String("source", ":", "UDP address to listen on and read packets from")
-var udpDestinationSend = flag.String("sink", "", "UDP to send the received packets to")
 
 type hex32byte [32]byte
 
@@ -44,14 +44,18 @@ func main() {
 		id = sha256.Sum256(append([]byte("TF_EXPAND_SEED_R"), []byte(seed)...))
 	}
 	ctx := context.Background()
-	err := run(ctx, &id, []byte(seed), *identifiable, *numStreams, *udpSourceListen, *udpDestinationSend)
+	var rnd *mathrand.Rand
+	if *deterministic != -1 {
+		rnd = mathrand.New(mathrand.NewSource(int64(*deterministic)))
+	}
+	err := run(ctx, &id, []byte(seed), *identifiable, *numStreams, rnd)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run(ctx context.Context, rendID *[32]byte, seed []byte, identifiable bool, numStreams int, udpSourceListen, udpDestinationSend string) error {
+func run(ctx context.Context, rendID *[32]byte, seed []byte, identifiable bool, numStreams int, rnd *mathrand.Rand) error {
 	tr, err := torch.New(ctx, proxy.FromEnvironment())
 	if err != nil {
 		return err
@@ -78,13 +82,18 @@ func run(ctx context.Context, rendID *[32]byte, seed []byte, identifiable bool, 
 	// is. Therefore our converstion partner may as well.
 	nodes := make([]*directory.NodeInfo, 0, 3)
 	if !identifiable {
-		nodes = append(nodes, tr.Pick(weigh))
-		nodes = append(nodes, tr.Pick(weigh))
+		nodes = append(nodes, tr.Pick(weigh, rnd))
+		nodes = append(nodes, tr.Pick(weigh, rnd))
 	}
 	nodes = append(nodes, rendNode)
 
 	rr := fnet.NewRoundRobin(nd.FRAMESIZE)
 	defer rr.Close()
+
+	fmt.Println("plan:")
+	for _, n := range nodes {
+		fmt.Printf("%d\n", n.IP)
+	}
 
 	sending := false
 
