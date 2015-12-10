@@ -1,0 +1,16 @@
+#!/bin/bash
+set -euo pipefail
+
+gst-launch-1.0 pulsesrc ! opusenc bitrate=$(echo '(509-12-16) * 8 * 1000/20'|bc) max-payload-size=$(echo 509-12-16|bc) packet-loss-percentage=5 inband-fec=true ! rtpopuspay ! udpsink host=127.0.0.1 port=5000 &
+mic_pid=$!
+
+gst-launch-1.0 udpsrc port=5001 caps="application/x-rtp" ! rtpjitterbuffer latency=100 ! rtpopusdepay ! opusdec ! audioconvert ! pulsesink &
+speaker_pid=$!
+
+function cleanup {
+	kill $mic_pid
+	kill $speaker_pid
+}
+trap cleanup EXIT
+
+udp-over-tor -source 127.0.0.1:5000 -sink 127.0.0.1:5001 $@
