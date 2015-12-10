@@ -66,8 +66,8 @@ func run(ctx context.Context, rendID *[32]byte, seed []byte, identifiable bool) 
 	// is. Therefore our converstion partner may as well.
 	nodes := make([]*directory.NodeInfo, 0, 3)
 	if !identifiable {
-		nodes = append(nodes, tr.Pick(weighRelayWith))
-		nodes = append(nodes, tr.Pick(weighRelayWith))
+		nodes = append(nodes, tr.Pick(weighRelayWith, nil))
+		nodes = append(nodes, tr.Pick(weighRelayWith, nil))
 	}
 	nodes = append(nodes, rendNode)
 
