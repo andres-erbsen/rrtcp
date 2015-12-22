@@ -1,0 +1,21 @@
+stata-stata:
+
+~5:00 PM
+Two computers running Ubuntu connected to Stata Center wi-fi in G7 lounge next to water fountains
+
+mit-estonia:
+
+6:40 PM
+MIT computer connected to Stata Center wi-fi in G7 lounge next to water fountain
+Estonia computer connected to the moral equivalent of Comcast: end-user connection behind NAT, served by an ISP monopoly. Hostname: pippi.tedx.ee
+
+16 laptops additionally in G7 lounge.
+
+tor -- xfinity
+Tor over an Xfinity connection in Random Hall room 311, with one side running anonymously and another one running non-anonymously. 5 connections for rrtcp, 1 connection for tcp.
+
+tor -- MIT Guest
+Tor over an MIT guest connection in Random Hall room 311, with one side running anonymously and another one running non-anonymously. 5 connections for rrtcp, 1 connection for tcp.
+
+tor -- MIT Guest 20
+Tor over an MIT guest connection in Random Hall room 311, with one side running anonymously and another one running non-anonymously. 20 connections for rrtcp, 1 connection for tcp.

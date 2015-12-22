@@ -1,0 +1,42 @@
+
+Clam None
+send mean: 73.8543950984 Mbits/sec
+send dev: 19.6697005211 Mbits/sec
+rcv mean: 51.4566754098 Mbits/sec
+rcv dev: 40.1290619618 Mbits/sec
+
+Clam TCP
+send mean: 71.3376988852 Mbits/sec
+send dev: 19.9079805324 Mbits/sec
+rcv mean: 56.3839145902 Mbits/sec
+rcv dev: 36.7397407839 Mbits/sec
+
+Clam RRTCP
+send mean: 74.6235050328 Mbits/sec
+send dev: 18.3152171719 Mbits/sec
+rcv mean: 53.3493702295 Mbits/sec
+rcv dev: 38.2481470163 Mbits/sec
+
+Estonia None
+send mean: 1.88718232258 Mbits/sec
+send dev: 0.491106035936 Mbits/sec
+
+Estonia TCP
+send mean: 1.88047233333 Mbits/sec
+send dev: 0.417621074046 Mbits/sec
+
+Estonia RRTCP
+send mean: 1.85337790323 Mbits/sec
+send dev: 0.436313555779 Mbits/sec
+
+Idanharde None
+send mean: 24.6415721967 Mbits/sec
+send dev: 6.13038889563 Mbits/sec
+
+Idanharde TCP
+send mean: 26.3190099508 Mbits/sec
+send dev: 6.53788718388 Mbits/sec
+
+Idanharde RRTCP
+send mean: 25.0257881148 Mbits/sec
+send dev: 7.90054537725 Mbits/sec

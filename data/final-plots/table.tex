@@ -1,0 +1,41 @@
+\documentclass[12pt,letter]{article}
+\usepackage{amssymb}
+\begin{document}
+
+\begin{table}[]
+\centering
+\caption{MIT Qualitative Data}
+\label{my-label}
+\begin{tabular}{lllll}
+                                        & UDP & TCP & RRTCP \\
+Stata Next to Ampitheater Exit          & \checkmark & $\times$ & \checkmark \\
+Stata Inner Courtyard                   & \checkmark* & $\times$ & \checkmark* \\
+38-5 Lab, Network EECS Conference Rooms & \checkmark  & \checkmark* & \checkmark \\
+34-5 Network EECS Conference Rooms      & \checkmark &  $\times$ & \checkmark* \\
+34-5 Network MIT Guest over Tor         & $\times$ & \checkmark** & \checkmark** \\ 
+\end{tabular}
+\end{table}
+
+\noindent * Only works when still. \\
+** Only works over Tor. \\ \\
+
+\textbf{Stata, next to wall with TV's by the exit to the amphitheater:} \\
+UDP works ok.
+TCP is unusably laggy for audio.
+RRTCP works.
+Network: StataCenter
+
+\textbf{Stata Inner Courtyard:} \\
+UDP and RRTCP are spotty, TCP does not work almost anywhere.
+Network: StataCenter.
+
+\textbf{38-5 lab, Network EECS Conference Rooms:} \\
+Everything except plain TCP is totally fine; plain TCP has occasional one-second-ish silence delays.
+
+\textbf{34-5 network EECS conference rooms:} \\
+UDP connects and is beautiful; TCP is really spotty -- a lasting 5s delay is oduced every sentence or so. RRTCP is good enough to have a conversation if the laptop is not moving.
+
+\textbf{34-5 network MIT GUEST:} \\
+UDP fails to connect, normal TCP fails to connect. TCP over TOR is usable if you are completely still, but crossing from one AP to another creates a 5s delay that persists 30s+. RRTCP is good enough to have a conversation.
+
+\end{document}

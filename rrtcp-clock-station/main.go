@@ -107,6 +107,7 @@ func dialer(ctx context.Context, frameSize int, numStreams int, addr string) err
 	}()
 
 	for i := 0; i < numStreams; i++ {
+
 		c, err := net.Dial("tcp", addr)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "net.Dial(%q): %s\n", addr, err.Error())

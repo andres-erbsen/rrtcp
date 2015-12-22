@@ -1,0 +1,11 @@
+\documentclass[12pt,letter]{article}
+\usepackage{amssymb}
+\usepackage[margin=0.5in]{geometry}
+\begin{document}
+
+There are two possible effects that could account for the improvements we saw with RRTCP. One possible cause of the delay is that in TCP, packets take time to be reordered on the receiving end. Another possible cause is that in TCP, packet loss causes a halved congestion window that limits the amount of packets being sent and causes us to have $\frac{1}{2}$ the throughput. In RRTCP, we also halve congestion window upon loss, but since we have multiple connections, we effectively decrease our throughput by a factor of $\frac{1}{2n}$ instead of $\frac{1}{2}$, where $n$ is our number of connections.
+
+
+In an attempt to discern which effect was dominant, W=we ran a test on two computers, one in Iowa, one at MIT. We used the utility \texttt{tc} to set artificial loss in the range from 0 - 10\% and artificial delay in the range from 100 - 200 ms. We observed a window-size that stayed consistently in the 200 - 400 range, indicating that we were not limited by the size of our congestion window. This leads us to believe that our improvements are a result of retransmit reordering, not more favorable congestion window resizing.
+
+\end{document}
