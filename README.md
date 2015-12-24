@@ -2,7 +2,7 @@ This repository contains implementation and testing code for Round Robin TCP, a 
 
 ## Dependencies
 
-On the `Go` programming language. The TOR tests and implementation require `Go 1.4` or greater to run.
+ The implementation and testing code is written in the `Go` programming language. The TOR tests and implementation require `Go 1.4.1` or greater to run.
 
 ## Protocols
 
@@ -15,11 +15,12 @@ To run the tests yourself, you must run two instances of a given clockstation, o
 
 For example, to run the Round Robin TCP tests:
 
-`cd rrtcp-clock-station`
-`go build`
-
-`./rrtcp-clock-station -address "localhost:1111" -l`
-`./rrtcp-clock-station -address "localhost:1111"`
+```
+cd rrtcp-clock-station
+go build
+./rrtcp-clock-station -address "localhost:1111" -l
+./rrtcp-clock-station -address "localhost:1111"
+```
 
 This listener has arbitrarily been chosen as the sender. Every 50 ms, it will send a packet and print the application send time of the packet, using the code in `clockstation`.
 
