@@ -1,6 +1,6 @@
 # Round Robin TCP
 
-This repository contains implementation and testing code for Round Robin TCP, a new transport layer network protocol which uses a round-robin pool of TCP connections to facilitate better bidirectional audio over TCP.
+This repository contains implementation and testing code for Round Robin TCP, a "new" "transport layer network protocol" which uses a round-robin pool of TCP connections to facilitate better bidirectional audio over TCP.
 
 ## Dependencies
 
@@ -31,4 +31,4 @@ The dialer receiver will print the send time and corresponding receive time for 
 ## Tor
 `udp-over-tor` contains code that uses a Go Tor implementation to send packets using Round Robin TCP over TOR.
 
-`udp-over-tor-test` contains code that performs tests analogous to the ones above, bug using Tor. It includes an argument `-deterministic` to deterministcally select a TOR path given a seed, for the purpose of conducting symmetrical tests.
+`udp-over-tor-test` contains code that performs tests analogous to the ones above, but using Tor. It includes an argument `-deterministic` to deterministcally select a TOR path given a seed, for the purpose of conducting symmetrical tests.
